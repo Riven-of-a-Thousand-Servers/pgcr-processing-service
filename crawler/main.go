@@ -1,4 +1,0 @@
-package crawler
-
-func main() {
-}

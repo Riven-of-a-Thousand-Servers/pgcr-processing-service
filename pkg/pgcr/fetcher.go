@@ -1,11 +1,11 @@
-package crawler
+package pgcr
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"rivenbot/types"
+	dto "rivenbot/types/dto"
 )
 
 var (
@@ -14,7 +14,7 @@ var (
 )
 
 // Tries to fetch a PGCR with the given instanceID from Bungie.net
-func fetchPgcr(instanceId int64, apiKey string, client *http.Client) (*types.PostGameCarnageReportResponse, error) {
+func FetchPgcr(instanceId int64, apiKey string, client *http.Client) (*dto.PostGameCarnageReportResponse, error) {
 	log.Printf("Fetching pgcr wit instanceId [%d] from Bungie\n", instanceId)
 	url := fmt.Sprintf("%s%s/%d/", baseUrl, pgcrPath, instanceId)
 	request, err := http.NewRequest("GET", url, nil)
@@ -30,7 +30,7 @@ func fetchPgcr(instanceId int64, apiKey string, client *http.Client) (*types.Pos
 
 	defer resp.Body.Close()
 
-	var pgcr types.PostGameCarnageReportResponse
+	var pgcr dto.PostGameCarnageReportResponse
 	decoder := json.NewDecoder(resp.Body)
 
 	if err := decoder.Decode(&pgcr); err != nil {

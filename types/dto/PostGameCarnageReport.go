@@ -11,6 +11,7 @@ type PostGameCarnageReport struct {
 	ActivityDetails                 ActivityDetails              `json:"ActivityDetails"`
 	Period                          string                       `json:"period"`
 	ActivityWasStartedFromBeginning bool                         `json:"activityWasStartedFromBeginning"`
+	StartingPhaseIndex              int                          `json:"startingPhaseIndex"`
 	Entries                         []PostGameCarnageReportEntry `json:"entries"`
 }
 
