@@ -1,6 +1,4 @@
-package types
-
-type ManifestResponse map[string]ManifestObject
+package dto 
 
 type ManifestObject struct {
 	Mode                      int               `json:"directActivityModeType"` // Using *int to handle nil values

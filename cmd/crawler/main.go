@@ -5,14 +5,13 @@ import (
 	"log"
 	"net/http"
 	"os"
-
-	pgcr "rivenbot/pkg/pgcr"
+  "rivenbot/pkg/postgres"
 
 	"github.com/joho/godotenv"
 )
 
 var (
-	workers          = flag.Int("workers", 50, "Number of workers to spin up during startup")
+	goroutines       = flag.Int("workers", 100, "Initial number of goroutines to spin up during startup")
 	latestInstanceId = flag.Int64("instanceId", -1, "The latest instanceId to fetch PGCRs from")
 )
 
@@ -26,8 +25,14 @@ func main() {
 
 	client := *http.DefaultClient
 
+  db, err := postgres.Connect()
+  if err != nil {
+    log.Fatal("Error connecting to Postgres", err)
+  }
+
 	for {
 		// run workers to fetch PGCRs from Bungie
-		pgcr.FetchPgcr(*latestInstanceId, apiKey, &client)
+    c := make(chan int64, 5)
+    go Work(*latestInstanceId, apiKey, db, &client, c)
 	}
 }

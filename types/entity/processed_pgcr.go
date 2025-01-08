@@ -1,4 +1,4 @@
-package types
+package entity 
 
 import (
 	"time"
@@ -74,8 +74,8 @@ type PlayerInformation struct {
 	MembershipType             int                        `json:"membershipType"`
 	DisplayName                string                     `json:"displayName"`
 	GlobalDisplayName          string                     `json:"globalDisplayName"`
-	GlobalDisplayNameCode      string                     `json:"GlobalDisplayNameCode"`
-	PlayerCharacterInformation PlayerCharacterInformation `json:"characterInformation"`
+  GlobalDisplayNameCode      int                        `json:"globalDisplayNameCode"`
+	PlayerCharacterInformation []PlayerCharacterInformation `json:"characterInformation"`
 }
 
 type PlayerCharacterInformation struct {
@@ -91,7 +91,7 @@ type PlayerCharacterInformation struct {
 	Deaths             int                          `json:"deaths"`
 	Kda                float32                      `json:"kda"`
 	Kdr                float32                      `json:"kdr"`
-	TimePlayed         time.Time                    `json:"timePlayed"`
+	TimePlayedSeconds         int                   `json:"timePlayedSeconds"`
 	WeaponInformation  []CharacterWeaponInformation `json:"weaponInformation"`
 	AbilityInformation CharacterAbilityInformation  `json:"abilityInformation"`
 }

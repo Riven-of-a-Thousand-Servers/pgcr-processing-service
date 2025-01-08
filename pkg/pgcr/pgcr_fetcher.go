@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
 	dto "rivenbot/types/dto"
 )
 
@@ -14,7 +15,7 @@ var (
 )
 
 // Tries to fetch a PGCR with the given instanceID from Bungie.net
-func FetchPgcr(instanceId int64, apiKey string, client *http.Client) (*dto.PostGameCarnageReportResponse, error) {
+func Fetch(instanceId int64, apiKey string, client *http.Client) (*dto.PostGameCarnageReportResponse, error) {
 	log.Printf("Fetching pgcr wit instanceId [%d] from Bungie\n", instanceId)
 	url := fmt.Sprintf("%s%s/%d/", baseUrl, pgcrPath, instanceId)
 	request, err := http.NewRequest("GET", url, nil)
@@ -34,7 +35,7 @@ func FetchPgcr(instanceId int64, apiKey string, client *http.Client) (*dto.PostG
 	decoder := json.NewDecoder(resp.Body)
 
 	if err := decoder.Decode(&pgcr); err != nil {
-		log.Print("Error decoding the PGCR from reques body")
+		log.Print("Error decoding the PGCR from request body")
 	}
 	return &pgcr, nil
 }

@@ -1,4 +1,4 @@
-package types
+package dto 
 
 type PostGameCarnageReportResponse struct {
 	Response        PostGameCarnageReport `json:"Response"`
@@ -28,8 +28,8 @@ type ActivityDetails struct {
 type PostGameCarnageReportEntry struct {
 	Player      PlayerInformation           `json:"player"`
 	CharacterId int64                       `json:"characterId"`
-	Values      map[string]StatsValue       `json:"values"`
-	Extended    WeaponAndAbilityInformation `json:"extended"`
+	Values      map[string]Metric       `json:"values"`
+	Extended    *WeaponAndAbilityInformation `json:"extended"`
 }
 
 type PlayerInformation struct {
@@ -45,23 +45,28 @@ type PlayerInformation struct {
 type DestinyUserInfo struct {
 	IconPath                    string `json:"iconPath"`
 	IsPublic                    bool   `json:"isPublic"`
+  MembershipId int64 `json:"membershhipId"`
 	MembershipType              int    `json:"membershipType"`
 	DisplayName                 string `json:"displayName"`
 	BungieGlobalDisplayName     string `json:"bungieGlobalDisplayName"`
 	BungieGlobalDisplayNameCode int    `json:"bungieGlobalDisplayNameCode"`
 }
 
-type StatsValue struct {
+type Basic struct {
 	Value        float32 `json:"value"`
 	DisplayValue string  `json:"displayValue"`
 }
 
+type Metric struct {
+  Basic Basic `json:"basic"`
+}
+
 type WeaponAndAbilityInformation struct {
 	Weapons   []WeaponInformation   `json:"weapons"`
-	Abilities map[string]StatsValue `json:"values"`
+	Abilities map[string]Metric `json:"values"`
 }
 
 type WeaponInformation struct {
 	ReferenceId int64                 `json:"referenceId"`
-	Values      map[string]StatsValue `json:"values"`
+	Values      map[string]Metric `json:"values"`
 }
