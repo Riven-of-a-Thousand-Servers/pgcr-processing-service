@@ -8,7 +8,7 @@ type PostGameCarnageReportResponse struct {
 }
 
 type PostGameCarnageReport struct {
-	ActivityDetails                 ActivityDetails              `json:"ActivityDetails"`
+	ActivityDetails                 ActivityDetails              `json:"activityDetails"`
 	Period                          string                       `json:"period"`
 	ActivityWasStartedFromBeginning bool                         `json:"activityWasStartedFromBeginning"`
 	StartingPhaseIndex              int                          `json:"startingPhaseIndex"`
@@ -17,11 +17,11 @@ type PostGameCarnageReport struct {
 
 type ActivityDetails struct {
 	ReferenceId    int64 `json:"referenceId"`
-	ActivityHash   int64 `json:"directoryActivityHash"`
+	ActivityHash   int64 `json:"directorActivityHash"`
 	InstanceId     int64 `json:"instanceId"`
 	Mode           int   `json:"mode"`
 	Modes          []int `json:"modes"`
-	IsPrivate      bool  `json:"IsPrivate"`
+	IsPrivate      bool  `json:"isPrivate"`
 	MembershipType int   `json:"membershipType"`
 }
 
