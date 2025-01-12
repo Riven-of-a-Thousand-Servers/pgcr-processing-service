@@ -1,14 +1,10 @@
 package redis
 
 import (
-	"context"
-	"encoding/json"
 	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-
-	dto "rivenbot/types/dto"
 )
 
 // Create a Redis client with the specified details
@@ -27,20 +23,4 @@ func CreateClient() (*redis.Client, error) {
 	})
 
 	return client, nil
-}
-
-// Returns a given manifest entity based on a hash
-func GetManifestEntity(client *redis.Client, hash string) (*dto.ManifestObject, error) {
-	ctx := context.Background()
-	result, err := client.Get(ctx, hash).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	var response *dto.ManifestObject
-	if err := json.Unmarshal([]byte(result), response); err != nil {
-		return nil, err
-	}
-
-	return response, nil
 }

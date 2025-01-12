@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-  "rivenbot/pkg/postgres"
+	"rivenbot/postgres"
 
 	"github.com/joho/godotenv"
 )
@@ -25,14 +25,14 @@ func main() {
 
 	client := *http.DefaultClient
 
-  db, err := postgres.Connect()
-  if err != nil {
-    log.Fatal("Error connecting to Postgres", err)
-  }
+	db, err := postgres.Connect()
+	if err != nil {
+		log.Fatal("Error connecting to Postgres", err)
+	}
 
 	for {
 		// run workers to fetch PGCRs from Bungie
-    c := make(chan int64, 5)
-    go Work(*latestInstanceId, apiKey, db, &client, c)
+		c := make(chan int64, 5)
+		go Work(*latestInstanceId, apiKey, db, &client, c)
 	}
 }

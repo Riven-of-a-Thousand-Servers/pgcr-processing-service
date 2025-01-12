@@ -1,4 +1,10 @@
-package dto 
+package dto
+
+type ByCharacterId []PostGameCarnageReportEntry
+
+func (a ByCharacterId) Len() int           { return len(a) }
+func (a ByCharacterId) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByCharacterId) Less(i, j int) bool { return a[i].CharacterId < a[j].CharacterId }
 
 type PostGameCarnageReportResponse struct {
 	Response        PostGameCarnageReport `json:"Response"`
@@ -16,19 +22,19 @@ type PostGameCarnageReport struct {
 }
 
 type ActivityDetails struct {
-	ReferenceId    int64 `json:"referenceId"`
-	ActivityHash   int64 `json:"directorActivityHash"`
-	InstanceId     int64 `json:"instanceId"`
-	Mode           int   `json:"mode"`
-	Modes          []int `json:"modes"`
-	IsPrivate      bool  `json:"isPrivate"`
-	MembershipType int   `json:"membershipType"`
+	ReferenceId    int64  `json:"referenceId"`
+	ActivityHash   int64  `json:"directorActivityHash"`
+	InstanceId     string `json:"instanceId"`
+	Mode           int    `json:"mode"`
+	Modes          []int  `json:"modes"`
+	IsPrivate      bool   `json:"isPrivate"`
+	MembershipType int    `json:"membershipType"`
 }
 
 type PostGameCarnageReportEntry struct {
-	Player      PlayerInformation           `json:"player"`
-	CharacterId int64                       `json:"characterId"`
-	Values      map[string]Metric       `json:"values"`
+	Player      PlayerInformation            `json:"player"`
+	CharacterId string                       `json:"characterId"`
+	Values      map[string]Metric            `json:"values"`
 	Extended    *WeaponAndAbilityInformation `json:"extended"`
 }
 
@@ -38,14 +44,14 @@ type PlayerInformation struct {
 	ClassHash       int64           `json:"classHash"`
 	RaceHash        int64           `json:"raceHash"`
 	GenderHash      int64           `json:"genderHash"`
-	CharacterLevel  int             `json:"lightLevel"`
+	LightLevel      int             `json:"lightLevel"`
 	EmblemHash      int64           `json:"emblemHash"`
 }
 
 type DestinyUserInfo struct {
 	IconPath                    string `json:"iconPath"`
 	IsPublic                    bool   `json:"isPublic"`
-  MembershipId int64 `json:"membershhipId"`
+	MembershipId                string `json:"membershipId"`
 	MembershipType              int    `json:"membershipType"`
 	DisplayName                 string `json:"displayName"`
 	BungieGlobalDisplayName     string `json:"bungieGlobalDisplayName"`
@@ -58,15 +64,15 @@ type Basic struct {
 }
 
 type Metric struct {
-  Basic Basic `json:"basic"`
+	Basic Basic `json:"basic"`
 }
 
 type WeaponAndAbilityInformation struct {
-	Weapons   []WeaponInformation   `json:"weapons"`
-	Abilities map[string]Metric `json:"values"`
+	Weapons   []WeaponInformation `json:"weapons"`
+	Abilities map[string]Metric   `json:"values"`
 }
 
 type WeaponInformation struct {
-	ReferenceId int64                 `json:"referenceId"`
+	ReferenceId int64             `json:"referenceId"`
 	Values      map[string]Metric `json:"values"`
 }
