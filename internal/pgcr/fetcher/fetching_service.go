@@ -38,12 +38,12 @@ func Fetch(instanceId int64, apiKey string, client *http.Client) (*dto.PostGameC
 		log.Panic("Error decoding the PGCR from request body", err)
 	}
 
-  if resp.StatusCode == 404 {
-    return &pgcr, fmt.Errorf("PGCR with Id [%d] wasn't found", instanceId) 
-  }
-  
-  if resp.StatusCode == 429 {
-    return nil, fmt.Errorf("In CloudFlare's waiting. Uh-oh, stinky")
-  }
+	if resp.StatusCode == 404 {
+		return &pgcr, fmt.Errorf("PGCR with Id [%d] wasn't found", instanceId)
+	}
+
+	if resp.StatusCode == 429 {
+		return nil, fmt.Errorf("In CloudFlare's waiting. Uh-oh, stinky")
+	}
 	return &pgcr, nil
 }
