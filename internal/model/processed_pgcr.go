@@ -81,6 +81,7 @@ type RaidDifficulty string
 
 const (
 	NORMAL       RaidDifficulty = "NORMAL"
+	STANDARD     RaidDifficulty = "STANDARD"
 	PRESTIGE     RaidDifficulty = "PRESTIGE"
 	MASTER       RaidDifficulty = "MASTER"
 	GUIDED_GAMES RaidDifficulty = "GUIDED_GAMES"
@@ -89,17 +90,10 @@ const (
 var reverseRaidDifficultyLabels map[string]RaidDifficulty
 var raidDifficultyLabels = map[RaidDifficulty]string{
 	NORMAL:       "Normal",
+	STANDARD:     "Standard",
 	PRESTIGE:     "Prestige",
 	MASTER:       "Master",
 	GUIDED_GAMES: "Guided Games",
-}
-
-func (rd RaidDifficulty) Label() string {
-	if label, exists := raidDifficultyLabels[rd]; exists {
-		return label
-	} else {
-		return ""
-	}
 }
 
 var once sync.Once
@@ -124,16 +118,6 @@ func initReverseMaps() {
 	})
 }
 
-// Get a raid difficulty from a string label
-func RD(label string) (RaidDifficulty, error) {
-	initReverseMaps()
-	if raidDifficulty, exists := reverseRaidDifficultyLabels[label]; exists {
-		return raidDifficulty, nil
-	} else {
-		return "", errors.New("Invalid raid difficulty label")
-	}
-}
-
 func Raid(label string) (RaidName, RaidDifficulty, error) {
 	initReverseMaps()
 	tokens := strings.Split(label, ":")
@@ -150,29 +134,13 @@ func Raid(label string) (RaidName, RaidDifficulty, error) {
 
 	raidName, a := reverseRaidNameLabels[rawRaidName]
 	raidDifficulty, b := reverseRaidDifficultyLabels[rawRaidDifficulty]
+	if strings.EqualFold(rawRaidDifficulty, "Standard") {
+		rawRaidDifficulty = string(reverseRaidDifficultyLabels["Normal"])
+	}
 	if a && b {
 		return raidName, raidDifficulty, nil
 	} else {
-		return "", "", fmt.Errorf("RaidName [%s] exists: [%b]. Raid difficulty [%s] exists: [%b]", raidName, a, raidDifficulty, b)
-	}
-}
-
-// Get a raid name from a string label
-func RN(label string) (RaidName, error) {
-	initReverseMaps()
-	if raidName, exists := reverseRaidNameLabels[label]; exists {
-		return raidName, nil
-	} else {
-		return "", errors.New("Invalid raid difficulty label")
-	}
-}
-
-func CC(label string) (CharacterClass, error) {
-	initReverseMaps()
-	if characterClass, exists := reverseCharacterClassLabels[label]; exists {
-		return characterClass, nil
-	} else {
-		return "", errors.New("Invalid character class label")
+		return "", "", fmt.Errorf("RaidName [%s] exists: [%v]. Raid difficulty [%s] exists: [%v]", raidName, a, raidDifficulty, b)
 	}
 }
 

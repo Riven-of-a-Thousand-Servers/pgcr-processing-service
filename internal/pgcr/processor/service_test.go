@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"slices"
 	"strconv"
@@ -26,9 +27,7 @@ func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*
 	return args.Get(0).(*dto.ManifestObject), args.Error(1)
 }
 
-// Testing solo flawless
 func TestSoloFlawlessPgcr(t *testing.T) {
-	// Given: a raw PGCR
 	file := "../../testdata/solo_flawless_pgcr.json"
 	pgcr, err := getPgcr(file)
 	if err != nil {
@@ -68,9 +67,7 @@ func TestSoloFlawlessPgcr(t *testing.T) {
 	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
 }
 
-// Testing duo flawless pgcr processing
-func TestDuoPgcr(t *testing.T) {
-	// Given: a duo flawless raw PGCR
+func TestDuoFlawlessPgcr(t *testing.T) {
 	file := "../../testdata/duo_flawless_pgcr.json"
 	pgcr, err := getPgcr(file)
 	if err != nil {
@@ -114,8 +111,7 @@ func TestDuoPgcr(t *testing.T) {
 }
 
 // Testing trio flawless
-func TestTrioPgcr(t *testing.T) {
-	// Given: a raw PGCR
+func TestTrioFlawlessPgcr(t *testing.T) {
 	file := "../../testdata/trio_flawless_pgcr.json"
 	pgcr, err := getPgcr(file)
 	if err != nil {
@@ -160,7 +156,6 @@ func TestTrioPgcr(t *testing.T) {
 }
 
 func TestFlawlessPgcr(t *testing.T) {
-	// Given: a raw PGCR with 6-man flawless
 	file := "../../testdata/flawless_pgcr.json"
 	pgcr, err := getPgcr(file)
 	if err != nil {
@@ -196,8 +191,138 @@ func TestFlawlessPgcr(t *testing.T) {
 	assert.Equal(processed.Flawless, true, "Solo should be true")
 	assert.Equal(processed.Solo, false, "Solo should be false")
 	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, false, "Trio should be true")
+	assert.Equal(processed.Trio, false, "Trio should be false")
 	assert.Equal(len(processed.PlayerInformation), 6, "There should only be 6 players")
+
+	assertPgcrFields(*processed, *pgcr, *response, assert)
+	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+}
+
+func TestSoloPgcr(t *testing.T) {
+	file := "../../testdata/solo_pgcr.json"
+	pgcr, err := getPgcr(file)
+	if err != nil {
+		t.Errorf("Failed to get file [%s]. %v", file, err)
+	}
+
+	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
+		return strings.Compare(a.CharacterId, b.CharacterId)
+	})
+	mockedRedis := new(MockRedisService)
+
+	// Mock manifest calls
+	response := &dto.ManifestObject{
+		DisplayProperties: dto.DisplayProperties{
+			Name: "Root of Nightmares: Standard",
+		},
+	}
+	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
+
+	processor := PGCRProcessor{
+		redisClient: mockedRedis,
+	}
+
+	// When: Process is called
+	_, processed, err := processor.Process(pgcr)
+
+	// Then: the return values are valid and processing went smooth
+	assert := assert.New(t)
+	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
+	})
+
+	assert.Equal(processed.Flawless, false, "Flawless should be false")
+	assert.Equal(processed.Solo, true, "Solo should be true")
+	assert.Equal(processed.Duo, false, "Duo should be false")
+	assert.Equal(processed.Trio, false, "Trio should be false")
+	assert.Equal(len(processed.PlayerInformation), 1, "There should only be 1 player")
+
+	assertPgcrFields(*processed, *pgcr, *response, assert)
+	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+
+}
+
+func TestDuoPgcr(t *testing.T) {
+	file := "../../testdata/duo_pgcr.json"
+	pgcr, err := getPgcr(file)
+	if err != nil {
+		t.Errorf("Failed to get file [%s]. %v", file, err)
+	}
+
+	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
+		return strings.Compare(a.CharacterId, b.CharacterId)
+	})
+	mockedRedis := new(MockRedisService)
+
+	// Mock manifest calls
+	response := &dto.ManifestObject{
+		DisplayProperties: dto.DisplayProperties{
+			Name: "Garden of Salvation",
+		},
+	}
+	mockedRedis.On("GetManifestEntity", mock.Anything, "3458480158").Return(response, nil)
+
+	processor := PGCRProcessor{
+		redisClient: mockedRedis,
+	}
+
+	// When: Process is called
+	_, processed, err := processor.Process(pgcr)
+
+	// Then: the return values are valid and processing went smooth
+	assert := assert.New(t)
+	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
+	})
+
+	assert.Equal(processed.Flawless, false, "Flawless should be false")
+	assert.Equal(processed.Solo, false, "Solo should be false")
+	assert.Equal(processed.Duo, true, "Duo should be true")
+	assert.Equal(processed.Trio, false, "Trio should be false")
+	assert.Equal(len(processed.PlayerInformation), 2, "There should only be 2 players")
+
+	assertPgcrFields(*processed, *pgcr, *response, assert)
+	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+}
+
+func TestTrioPgcr(t *testing.T) {
+	file := "../../testdata/trio_pgcr.json"
+	pgcr, err := getPgcr(file)
+	if err != nil {
+		t.Errorf("Failed to get file [%s]. %v", file, err)
+	}
+
+	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
+		return strings.Compare(a.CharacterId, b.CharacterId)
+	})
+	mockedRedis := new(MockRedisService)
+
+	// Mock manifest calls
+	response := &dto.ManifestObject{
+		DisplayProperties: dto.DisplayProperties{
+			Name: "Root of Nightmares: Standard",
+		},
+	}
+	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
+
+	processor := PGCRProcessor{
+		redisClient: mockedRedis,
+	}
+
+	// When: Process is called
+	_, processed, err := processor.Process(pgcr)
+
+	// Then: the return values are valid and processing went smooth
+	assert := assert.New(t)
+	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
+	})
+
+	assert.Equal(processed.Flawless, false, "Flawless should be false")
+	assert.Equal(processed.Solo, false, "Solo should be false")
+	assert.Equal(processed.Duo, false, "Duo should be false")
+	assert.Equal(processed.Trio, true, "Trio should be true")
+	assert.Equal(len(processed.PlayerInformation), 3, "There should only be 3 players")
 
 	assertPgcrFields(*processed, *pgcr, *response, assert)
 	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
@@ -236,12 +361,12 @@ func assertPgcrFields(processed model.ProcessedPostGameCarnageReport, pgcr dto.P
 	}
 
 	// General PGCR info
-	assert.Equal(startTime, processed.StartTime, "Start time should be the same as original pgcr.Period")
+	assert.Equal(startTime, processed.StartTime, "Start time should be the same as the original pgcr.Period")
 	assert.Equal(endTime, processed.EndTime, "End time should be the same when calculated")
 	assert.Equal(pgcr.ActivityWasStartedFromBeginning, processed.FromBeginning, "Both should have the same beginning")
 	assert.Equal(instanceId, processed.InstanceId, "Instance IDs should be the same")
-	assert.Equal(raidName, processed.RaidName, "Raid name should be Vault of Glass")
-	assert.Equal(raidDifficulty, processed.RaidDifficulty, "Raid difficulty should be Normal")
+	assert.Equal(raidName, processed.RaidName, fmt.Sprintf("Raid name should be %s", raidName))
+	assert.Equal(raidDifficulty, processed.RaidDifficulty, fmt.Sprintf("Raid difficulty should be %s", raidDifficulty))
 	assert.Equal(pgcr.ActivityDetails.ActivityHash, processed.ActivityHash, "Activity hashes should be the same")
 }
 
@@ -323,9 +448,9 @@ func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr [
 func assertPlayerWeapons(processedWeapons []model.CharacterWeaponInformation, pgcrWeapons []dto.WeaponInformation, assert *assert.Assertions) {
 	for i, weapon := range processedWeapons {
 		assert.Equal(weapon.WeaponHash, pgcrWeapons[i].ReferenceId, "Weapon hashes should match")
-		assert.Equal(weapon.Kills, int(pgcrWeapons[i].Values["uniqueWeaponKills"].Basic.Value))
-		assert.Equal(weapon.PrecisionKills, int(pgcrWeapons[i].Values["uniqueWeaponPrecisionKills"].Basic.Value))
-		assert.Equal(weapon.PrecisionRatio, pgcrWeapons[i].Values["uniqueWeaponKillsPrecisionKills"].Basic.Value)
+		assert.Equal(weapon.Kills, int(pgcrWeapons[i].Values["uniqueWeaponKills"].Basic.Value), "Weapon kills should match")
+		assert.Equal(weapon.PrecisionKills, int(pgcrWeapons[i].Values["uniqueWeaponPrecisionKills"].Basic.Value), "Weapon precision kills should match")
+		assert.Equal(weapon.PrecisionRatio, pgcrWeapons[i].Values["uniqueWeaponKillsPrecisionKills"].Basic.Value, "Weapon precision ratio should match")
 	}
 }
 
