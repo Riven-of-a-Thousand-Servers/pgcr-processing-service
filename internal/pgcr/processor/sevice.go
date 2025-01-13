@@ -1,15 +1,15 @@
-package pgcr
+package processor
 
 import (
 	"context"
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 
 	"rivenbot/internal/dto"
 	"rivenbot/internal/model"
+	"rivenbot/internal/pgcr/compressor"
 	"rivenbot/internal/redis"
 )
 
@@ -48,7 +48,7 @@ func (p *PGCRProcessor) Process(pgcr *dto.PostGameCarnageReport) ([]byte, *model
 		return nil, nil, err
 	}
 
-	compressed, err := Compress(pgcr)
+	compressed, err := compressor.Compress(pgcr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,27 +93,14 @@ func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient redis.RedisClient)
 		return nil, err
 	}
 
-	// Set RaidName and RaidDifficulty
-	tokens := strings.Split(maniestResponse.DisplayProperties.Name, ":")
-	rawRaidName := strings.TrimSpace(tokens[0])
-	rawRaidDifficulty := "Normal" // Default difficulty
-	if len(tokens) > 1 {
-		rawRaidDifficulty = strings.TrimSpace(tokens[1])
-	}
-
-	raidName, err := model.RN(rawRaidName)
+	raidName, raidDifficulty, err := model.Raid(maniestResponse.DisplayProperties.Name)
 	if err != nil {
-		log.Panicf("Unable to parse raid name [%s]: %v", raidName, err)
+		log.Panic("Unable to parse activity raid name and raid difficulty")
 		return nil, err
 	}
+
 	entity.RaidName = raidName
-
-	RaidDifficulty, err := model.RD(rawRaidDifficulty)
-	if err != nil {
-		log.Panicf("Unable to parse raid difficulty [%s]: %v", rawRaidDifficulty, err)
-		return nil, err
-	}
-	entity.RaidDifficulty = RaidDifficulty
+	entity.RaidDifficulty = raidDifficulty
 
 	var playersGrouped = make(map[int64][]dto.PostGameCarnageReportEntry)
 	for _, entry := range pgcr.Entries {
@@ -251,6 +238,24 @@ func createPlayerCharacter(entry *dto.PostGameCarnageReportEntry) (*model.Player
 		characterInfo.AbilityInformation = abilityInfo
 	}
 	return &characterInfo, nil
+}
+
+func GroupCharacters(entries []dto.PostGameCarnageReportEntry) (map[int64][]dto.PostGameCarnageReportEntry, error) {
+	var playersGrouped = make(map[int64][]dto.PostGameCarnageReportEntry)
+	for _, entry := range entries {
+		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
+		if err != nil {
+			log.Panicf("Something went wrong when parsing membership ID [%s] to Int64", entry.Player.DestinyUserInfo.MembershipId)
+			return nil, err
+		}
+		val, ok := playersGrouped[membershipId]
+		if ok {
+			playersGrouped[membershipId] = append(val, entry)
+		} else {
+			playersGrouped[membershipId] = []dto.PostGameCarnageReportEntry{entry}
+		}
+	}
+	return playersGrouped, nil
 }
 
 // Resolves if a raid was fresh or not, courtesy of @Newo

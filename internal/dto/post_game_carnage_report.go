@@ -1,11 +1,5 @@
 package dto
 
-type ByCharacterId []PostGameCarnageReportEntry
-
-func (a ByCharacterId) Len() int           { return len(a) }
-func (a ByCharacterId) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByCharacterId) Less(i, j int) bool { return a[i].CharacterId < a[j].CharacterId }
-
 type PostGameCarnageReportResponse struct {
 	Response        PostGameCarnageReport `json:"Response"`
 	ErrorCode       int                   `json:"ErrorCode"`

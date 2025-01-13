@@ -1,4 +1,4 @@
-package pgcr
+package fetcher
 
 import (
 	"encoding/json"

@@ -2,6 +2,9 @@ package model
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -128,6 +131,29 @@ func RD(label string) (RaidDifficulty, error) {
 		return raidDifficulty, nil
 	} else {
 		return "", errors.New("Invalid raid difficulty label")
+	}
+}
+
+func Raid(label string) (RaidName, RaidDifficulty, error) {
+	initReverseMaps()
+	tokens := strings.Split(label, ":")
+
+	if len(tokens) <= 0 {
+		log.Panicf("Unable to tokenize raid Manifest Display Name [%s]", label)
+		return "", "", errors.New("Unable to tokenize raid Manifest Display Name")
+	}
+	rawRaidName := strings.TrimSpace(tokens[0])
+	rawRaidDifficulty := "Normal" // Default difficulty
+	if len(tokens) > 1 {
+		rawRaidDifficulty = strings.TrimSpace(tokens[1])
+	}
+
+	raidName, a := reverseRaidNameLabels[rawRaidName]
+	raidDifficulty, b := reverseRaidDifficultyLabels[rawRaidDifficulty]
+	if a && b {
+		return raidName, raidDifficulty, nil
+	} else {
+		return "", "", fmt.Errorf("RaidName [%s] exists: [%b]. Raid difficulty [%s] exists: [%b]", raidName, a, raidDifficulty, b)
 	}
 }
 

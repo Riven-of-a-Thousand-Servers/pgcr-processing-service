@@ -1,4 +1,4 @@
-package pgcr
+package compressor
 
 import (
 	"bytes"
