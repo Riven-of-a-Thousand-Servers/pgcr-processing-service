@@ -328,6 +328,93 @@ func TestTrioPgcr(t *testing.T) {
 	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
 }
 
+func TestNotCompletedPgcr(t *testing.T) {
+	file := "../../testdata/not_completed_pgcr.json"
+	pgcr, err := getPgcr(file)
+	if err != nil {
+		t.Errorf("Failed to get file [%s]. %v", file, err)
+	}
+
+	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
+		return strings.Compare(a.CharacterId, b.CharacterId)
+	})
+	mockedRedis := new(MockRedisService)
+
+	// Mock manifest calls
+	response := &dto.ManifestObject{
+		DisplayProperties: dto.DisplayProperties{
+			Name: "Root of Nightmares: Standard",
+		},
+	}
+	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
+
+	processor := PGCRProcessor{
+		redisClient: mockedRedis,
+	}
+
+	// When: Process is called
+	_, processed, err := processor.Process(pgcr)
+
+	// Then: the return values are valid and processing went smooth
+	assert := assert.New(t)
+	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
+	})
+
+	assert.Equal(processed.Flawless, false, "Flawless should be false")
+	assert.Equal(processed.Solo, false, "Solo should be false")
+	assert.Equal(processed.Duo, false, "Duo should be false")
+	assert.Equal(processed.Trio, true, "Trio should be false")
+	assert.Equal(len(processed.PlayerInformation), 6, "There should only be 6 players")
+
+	assertPgcrFields(*processed, *pgcr, *response, assert)
+	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+}
+
+func TestVariousCharactersOnePlayerPgcr(t *testing.T) {
+	file := "../../testdata/various_character_pgcr.json"
+	pgcr, err := getPgcr(file)
+	if err != nil {
+		t.Errorf("Failed to get file [%s]. %v", file, err)
+	}
+
+	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
+		return strings.Compare(a.CharacterId, b.CharacterId)
+	})
+	mockedRedis := new(MockRedisService)
+
+	// Mock manifest calls
+	response := &dto.ManifestObject{
+		DisplayProperties: dto.DisplayProperties{
+			Name: "Root of Nightmares: Standard",
+		},
+	}
+	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
+
+	processor := PGCRProcessor{
+		redisClient: mockedRedis,
+	}
+
+	// When: Process is called
+	_, processed, err := processor.Process(pgcr)
+
+	// Then: the return values are valid and processing went smooth
+	assert := assert.New(t)
+	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+		return compareInt(a.MembershipId, b.MembershipId)
+	})
+
+	assert.Equal(processed.Flawless, false, "Flawless should be false")
+	assert.Equal(processed.Solo, false, "Solo should be false")
+	assert.Equal(processed.Duo, false, "Duo should be false")
+	assert.Equal(processed.Trio, false, "Trio should be false")
+	assert.Equal(len(processed.PlayerInformation), 4, "There should only be 4 players")
+
+	assertPgcrFields(*processed, *pgcr, *response, assert)
+	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+}
+
+// Utility to retrieve a pgcr json as test data
 func getPgcr(filePath string) (*dto.PostGameCarnageReport, error) {
 	bytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -376,22 +463,28 @@ func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostG
 	if err != nil {
 		assert.Errorf(err, "Error while grouping characters for assertions")
 	}
+
+	// Sort all the keys, which are the membership Ids of all players in the activity
+	keys := make([]int64, 0, len(grouped))
+	for k := range grouped {
+		keys = append(keys, k)
+	}
+
+	slices.SortFunc(keys, func(a, b int64) int {
+		return compareInt(a, b)
+	})
+
 	for i, player := range playerInfo {
-		membershipId, err := strconv.ParseInt(pgcrEntries[i].Player.DestinyUserInfo.MembershipId, 10, 64)
+		membershipId, err := strconv.ParseInt(grouped[keys[i]][0].Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
 			assert.Error(err, "Something went wrong when parsing membership ID to Int64")
 		}
 
-		assert.Equal(player.DisplayName, pgcrEntries[i].Player.DestinyUserInfo.DisplayName, "Display names should be equal")
-		assert.Equal(player.MembershipType, pgcrEntries[i].Player.DestinyUserInfo.MembershipType, "MembershipTypes should be equal")
+		assert.Equal(player.DisplayName, grouped[keys[i]][0].Player.DestinyUserInfo.DisplayName, "Display names should be equal")
+		assert.Equal(player.MembershipType, grouped[keys[i]][0].Player.DestinyUserInfo.MembershipType, "MembershipTypes should be equal")
 		assert.Equal(player.MembershipId, membershipId, "MembershipIds should be equal")
-		assert.Equal(player.GlobalDisplayName, pgcrEntries[i].Player.DestinyUserInfo.BungieGlobalDisplayName, "Global display name should be equal")
-		assert.Equal(player.GlobalDisplayNameCode, pgcrEntries[i].Player.DestinyUserInfo.BungieGlobalDisplayNameCode, "Global display name code should be equal")
-
-		// Ability information
-		assert.Equal(int(pgcrEntries[i].Extended.Abilities["weaponKillsGrenade"].Basic.Value), player.PlayerCharacterInformation[0].AbilityInformation.GrenadeKills, "Grenade kills should be equal to each other")
-		assert.Equal(int(pgcrEntries[i].Extended.Abilities["weaponKillsMelee"].Basic.Value), player.PlayerCharacterInformation[0].AbilityInformation.MeleeKills, "Melee kills should be equal to each other")
-		assert.Equal(int(pgcrEntries[i].Extended.Abilities["weaponKillsSuper"].Basic.Value), player.PlayerCharacterInformation[0].AbilityInformation.SuperKills, "Super kills should be equal to each other")
+		assert.Equal(player.GlobalDisplayName, grouped[keys[i]][0].Player.DestinyUserInfo.BungieGlobalDisplayName, "Global display name should be equal")
+		assert.Equal(player.GlobalDisplayNameCode, grouped[keys[i]][0].Player.DestinyUserInfo.BungieGlobalDisplayNameCode, "Global display name code should be equal")
 
 		// Character stuff
 		pgcrCharacters := grouped[player.MembershipId]
@@ -422,7 +515,9 @@ func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr [
 			assert.Error(err, "Something went wrong when parsing character ID to Int64")
 		}
 		characterClass := model.CharacterClass(pgcr[i].Player.CharacterClass)
+		assert.Equal(len(processed), len(pgcr), "Both slices should contain the same amount of characters for a player")
 		assert.Equal(int(pgcr[i].Values["kills"].Basic.Value), playerCharacter.Kills, "Kills should match")
+		assert.Equal(pgcr[i].Values["completed"].Basic.Value == 1.0, playerCharacter.ActivityCompleted, "Completed should be correct for the player")
 		assert.Equal(int(pgcr[i].Values["deaths"].Basic.Value), playerCharacter.Deaths, "Deaths should match")
 		assert.Equal(int(pgcr[i].Values["assists"].Basic.Value), playerCharacter.Assists, "Assists should match")
 		assert.Equal(pgcr[i].Values["killsDeathsAssists"].Basic.Value, playerCharacter.Kda, "KDA should match")
@@ -431,6 +526,11 @@ func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr [
 		assert.Equal(characterId, playerCharacter.CharacterId, "CharacterID should match between result and original")
 		assert.Equal(characterClass, playerCharacter.CharacterClass, "Character class should match")
 		assert.Equal(pgcr[i].Player.EmblemHash, playerCharacter.CharacterEmblem, "Emblem hashes should match")
+
+		// Ability information
+		assert.Equal(int(pgcr[i].Extended.Abilities["weaponKillsGrenade"].Basic.Value), playerCharacter.AbilityInformation.GrenadeKills, "Grenade kills should be equal to each other")
+		assert.Equal(int(pgcr[i].Extended.Abilities["weaponKillsMelee"].Basic.Value), playerCharacter.AbilityInformation.MeleeKills, "Melee kills should be equal to each other")
+		assert.Equal(int(pgcr[i].Extended.Abilities["weaponKillsSuper"].Basic.Value), playerCharacter.AbilityInformation.SuperKills, "Super kills should be equal to each other")
 
 		slices.SortFunc(playerCharacter.WeaponInformation, func(a, b model.CharacterWeaponInformation) int {
 			return compareInt(a.WeaponHash, b.WeaponHash)
