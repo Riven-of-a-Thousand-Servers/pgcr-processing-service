@@ -7,7 +7,6 @@ import (
 	"os"
 	"slices"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -27,391 +26,175 @@ func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*
 	return args.Get(0).(*dto.ManifestObject), args.Error(1)
 }
 
-func TestSoloFlawlessPgcr(t *testing.T) {
-	file := "../../testdata/solo_flawless_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Last Wish",
+var pgcrTests = map[string]struct {
+	inputFile string
+	response  *dto.ManifestObject
+	flawless  bool
+	solo      bool
+	duo       bool
+	trio      bool
+	size      int
+}{
+	"solo_flawless_pgcr": {
+		inputFile: "../../testdata/solo_flawless_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Last Wish",
+			},
 		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-
-	// General lowman flags
-	assert.Equal(processed.Flawless, true, "Flawless should be false")
-	assert.Equal(processed.Solo, true, "Solo should be true")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-
-	// General PGCR info
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-
-	// Player information
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+		size:     1,
+		flawless: true,
+		solo:     true,
+		duo:      false,
+		trio:     false,
+	},
+	"duo_flawless_pgcr": {
+		inputFile: "../../testdata/duo_flawless_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Vault of Glass: Normal",
+			},
+		},
+		size:     2,
+		flawless: true,
+		solo:     false,
+		duo:      true,
+		trio:     false,
+	},
+	"trio_flawless_pgcr": {
+		inputFile: "../../testdata/trio_flawless_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "King's Fall: Normal",
+			},
+		},
+		size:     3,
+		flawless: true,
+		solo:     false,
+		duo:      false,
+		trio:     true,
+	},
+	"flawless_pgcr": {
+		inputFile: "../../testdata/flawless_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Crota's End: Normal",
+			},
+		},
+		size:     6,
+		flawless: true,
+		solo:     false,
+		duo:      false,
+		trio:     false,
+	},
+	"solo_pgcr": {
+		inputFile: "../../testdata/solo_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Root of Nightmares: Standard",
+			},
+		},
+		size:     1,
+		flawless: false,
+		solo:     true,
+		duo:      false,
+		trio:     false,
+	},
+	"duo_pgcr": {
+		inputFile: "../../testdata/duo_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Garden of Salvation",
+			},
+		},
+		size:     2,
+		flawless: false,
+		solo:     false,
+		duo:      true,
+		trio:     false,
+	},
+	"trio_pgcr": {
+		inputFile: "../../testdata/trio_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Root of Nightmares: Standard",
+			},
+		},
+		size:     3,
+		flawless: false,
+		solo:     false,
+		duo:      false,
+		trio:     true,
+	},
+	"uncomplete_pgcr": {
+		inputFile: "../../testdata/not_completed_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Root of Nightmares: Standard",
+			},
+		},
+		size:     6,
+		flawless: false,
+		solo:     false,
+		duo:      false,
+		trio:     false,
+	},
+	"various_characters_on_player_pgcr": {
+		inputFile: "../../testdata/various_character_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Root of Nightmares: Standard",
+			},
+		},
+		size:     4,
+		flawless: false,
+		solo:     false,
+		duo:      false,
+		trio:     false,
+	},
 }
 
-func TestDuoFlawlessPgcr(t *testing.T) {
-	file := "../../testdata/duo_flawless_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
+func TestPgcrProcessing(t *testing.T) {
+	for test, params := range pgcrTests {
+		t.Run(test, func(t *testing.T) {
+			pgcr, err := getPgcr(params.inputFile)
+			if err != nil {
+				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
+			}
+
+			mockedRedis := new(MockRedisService)
+
+			// Mock manifest calls
+			activityId := pgcr.ActivityDetails.ActivityHash
+			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(params.response, nil)
+
+			processor := PGCRProcessor{
+				redisClient: mockedRedis,
+			}
+
+			_, processed, err := processor.Process(pgcr)
+
+			assert := assert.New(t)
+			slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+				return compareInt(a.MembershipId, b.MembershipId)
+			})
+
+			// General lowman flags
+			assert.Equal(processed.Flawless, params.flawless, fmt.Sprintf("Flawless should be %v", params.flawless))
+			assert.Equal(processed.Solo, params.solo, fmt.Sprintf("Solo should be %v", params.solo))
+			assert.Equal(processed.Duo, params.duo, fmt.Sprintf("Duo should be %v", params.duo))
+			assert.Equal(processed.Trio, params.trio, fmt.Sprintf("Trio should be %v", params.trio))
+
+			// Player Information size is correct
+			assert.Equal(len(processed.PlayerInformation), params.size, fmt.Sprintf("Player Information size should be %d", params.size))
+
+			// Assert PGCR info
+			assertPgcrFields(*processed, *pgcr, *params.response, assert)
+
+			// Assert player information
+			assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
+		})
 	}
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.Player.DestinyUserInfo.DisplayName, b.Player.DestinyUserInfo.DisplayName)
-	})
-
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Vault of Glass: Normal",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "3881495763").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return strings.Compare(a.DisplayName, b.DisplayName)
-	})
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-
-	assert.Equal(len(processed.PlayerInformation), 2, "There should only be 2 players")
-	assert.Equal(processed.Flawless, true, "Flawless should be true")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, true, "Duo should be true")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-// Testing trio flawless
-func TestTrioFlawlessPgcr(t *testing.T) {
-	file := "../../testdata/trio_flawless_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "King's Fall: Normal",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "1374392663").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(len(processed.PlayerInformation), 3, "There should only be 2 players")
-	assert.Equal(processed.Flawless, true, "Flawless should be true")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, true, "Trio should be true")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-func TestFlawlessPgcr(t *testing.T) {
-	file := "../../testdata/flawless_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Crota's End: Normal",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "4179289725").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(processed.Flawless, true, "Solo should be true")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-	assert.Equal(len(processed.PlayerInformation), 6, "There should only be 6 players")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-func TestSoloPgcr(t *testing.T) {
-	file := "../../testdata/solo_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Root of Nightmares: Standard",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(processed.Flawless, false, "Flawless should be false")
-	assert.Equal(processed.Solo, true, "Solo should be true")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-	assert.Equal(len(processed.PlayerInformation), 1, "There should only be 1 player")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-
-}
-
-func TestDuoPgcr(t *testing.T) {
-	file := "../../testdata/duo_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Garden of Salvation",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "3458480158").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(processed.Flawless, false, "Flawless should be false")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, true, "Duo should be true")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-	assert.Equal(len(processed.PlayerInformation), 2, "There should only be 2 players")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-func TestTrioPgcr(t *testing.T) {
-	file := "../../testdata/trio_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Root of Nightmares: Standard",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(processed.Flawless, false, "Flawless should be false")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, true, "Trio should be true")
-	assert.Equal(len(processed.PlayerInformation), 3, "There should only be 3 players")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-func TestNotCompletedPgcr(t *testing.T) {
-	file := "../../testdata/not_completed_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Root of Nightmares: Standard",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.PlayerCharacterInformation[0].CharacterId, b.PlayerCharacterInformation[0].CharacterId)
-	})
-
-	assert.Equal(processed.Flawless, false, "Flawless should be false")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, true, "Trio should be false")
-	assert.Equal(len(processed.PlayerInformation), 6, "There should only be 6 players")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
-}
-
-func TestVariousCharactersOnePlayerPgcr(t *testing.T) {
-	file := "../../testdata/various_character_pgcr.json"
-	pgcr, err := getPgcr(file)
-	if err != nil {
-		t.Errorf("Failed to get file [%s]. %v", file, err)
-	}
-
-	slices.SortFunc(pgcr.Entries, func(a, b dto.PostGameCarnageReportEntry) int {
-		return strings.Compare(a.CharacterId, b.CharacterId)
-	})
-	mockedRedis := new(MockRedisService)
-
-	// Mock manifest calls
-	response := &dto.ManifestObject{
-		DisplayProperties: dto.DisplayProperties{
-			Name: "Root of Nightmares: Standard",
-		},
-	}
-	mockedRedis.On("GetManifestEntity", mock.Anything, "2381413764").Return(response, nil)
-
-	processor := PGCRProcessor{
-		redisClient: mockedRedis,
-	}
-
-	// When: Process is called
-	_, processed, err := processor.Process(pgcr)
-
-	// Then: the return values are valid and processing went smooth
-	assert := assert.New(t)
-	slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
-		return compareInt(a.MembershipId, b.MembershipId)
-	})
-
-	assert.Equal(processed.Flawless, false, "Flawless should be false")
-	assert.Equal(processed.Solo, false, "Solo should be false")
-	assert.Equal(processed.Duo, false, "Duo should be false")
-	assert.Equal(processed.Trio, false, "Trio should be false")
-	assert.Equal(len(processed.PlayerInformation), 4, "There should only be 4 players")
-
-	assertPgcrFields(*processed, *pgcr, *response, assert)
-	assertPlayers(processed.PlayerInformation, pgcr.Entries, assert)
 }
 
 // Utility to retrieve a pgcr json as test data
