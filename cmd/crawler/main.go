@@ -5,7 +5,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"rivenbot/internal/client"
+	"rivenbot/internal/mapper"
+	"rivenbot/internal/repository"
 	"rivenbot/postgres"
+	"rivenbot/redis"
 
 	"github.com/joho/godotenv"
 )
@@ -23,16 +27,40 @@ func main() {
 
 	apiKey := os.Getenv("BUNGIE_API_KEY")
 
-	client := *http.DefaultClient
+	httpClient := *http.DefaultClient
 
 	db, err := postgres.Connect()
 	if err != nil {
 		log.Fatal("Error connecting to Postgres", err)
 	}
 
+	redisClient, err := redis.CreateClient()
+	if err != nil {
+		log.Fatal("Error connecting to redis", err)
+	}
+
+	redis := client.RedisService{
+		Client: redisClient,
+	}
+
+	client := client.BungieHttpClient{
+		Client: &httpClient,
+	}
+	repository := repository.PgcrRepository{
+		Conn: db,
+	}
+	mapper := mapper.PgcrMapper{
+		RedisClient: &redis,
+	}
+
 	for {
 		// run workers to fetch PGCRs from Bungie
 		c := make(chan int64, 5)
-		go Work(*latestInstanceId, apiKey, db, &client, c)
+		worker := PgcrWebWorker{
+			Client:     client,
+			Mapper:     mapper,
+			Repository: repository,
+		}
+		go worker.work(*latestInstanceId, apiKey, c)
 	}
 }

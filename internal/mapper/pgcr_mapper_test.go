@@ -1,4 +1,4 @@
-package processor
+package mapper
 
 import (
 	"context"
@@ -167,7 +167,7 @@ var pgcrTests = map[string]struct {
 	},
 }
 
-func TestPgcrProcessing(t *testing.T) {
+func TestPgcrMapping(t *testing.T) {
 	for test, params := range pgcrTests {
 		t.Run(test, func(t *testing.T) {
 			pgcr, err := getPgcr(params.inputFile)
@@ -181,11 +181,11 @@ func TestPgcrProcessing(t *testing.T) {
 			activityId := pgcr.ActivityDetails.ActivityHash
 			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(params.response, nil)
 
-			processor := PGCRProcessor{
-				redisClient: mockedRedis,
+			processor := PgcrMapper{
+				RedisClient: mockedRedis,
 			}
 
-			_, processed, err := processor.Process(pgcr)
+			_, processed, err := processor.Map(pgcr)
 
 			assert := assert.New(t)
 			slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
@@ -252,11 +252,11 @@ func TestPgcrFreshness(t *testing.T) {
 			}
 			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(response, nil)
 
-			processor := PGCRProcessor{
-				redisClient: mockedRedis,
+			processor := PgcrMapper{
+				RedisClient: mockedRedis,
 			}
 
-			_, processed, err := processor.Process(pgcr)
+			_, processed, err := processor.Map(pgcr)
 
 			assert := assert.New(t)
 
@@ -267,7 +267,7 @@ func TestPgcrFreshness(t *testing.T) {
 
 // Utility to retrieve a pgcr json as test data
 func getPgcr(file string) (*dto.PostGameCarnageReport, error) {
-	bytes, err := os.ReadFile("../../testdata/" + file)
+	bytes, err := os.ReadFile("../testdata/" + file)
 	if err != nil {
 		return nil, err
 	}

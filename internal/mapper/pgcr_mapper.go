@@ -1,4 +1,4 @@
-package processor
+package mapper
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	"rivenbot/internal/client"
 	"rivenbot/internal/dto"
 	"rivenbot/internal/model"
-	"rivenbot/internal/pgcr/compressor"
-	"rivenbot/internal/redis"
+	"rivenbot/internal/utils"
 )
 
-type PGCRProcessor struct {
-	redisClient redis.RedisClient
+type PgcrMapper struct {
+	RedisClient client.RedisClient
 }
 
 const (
@@ -39,16 +39,16 @@ var leviHashes = map[int64]bool{
 	3879860661: true, 3857338478: true,
 }
 
-// This method processes the PGCR into a pre-processed format thats more suitable for features
+// This method maps the PGCR into a pre-processed format thats more suitable for features
 // Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
-func (p *PGCRProcessor) Process(pgcr *dto.PostGameCarnageReport) ([]byte, *model.ProcessedPostGameCarnageReport, error) {
-	processedPgcr, err := processPgcr(pgcr, p.redisClient)
+func (p *PgcrMapper) Map(pgcr *dto.PostGameCarnageReport) ([]byte, *model.ProcessedPostGameCarnageReport, error) {
+	processedPgcr, err := processPgcr(pgcr, p.RedisClient)
 	if err != nil {
 		log.Fatal(err)
 		return nil, nil, err
 	}
 
-	compressed, err := compressor.Compress(pgcr)
+	compressed, err := utils.Compress(pgcr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,7 +56,7 @@ func (p *PGCRProcessor) Process(pgcr *dto.PostGameCarnageReport) ([]byte, *model
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient redis.RedisClient) (*model.ProcessedPostGameCarnageReport, error) {
+func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient) (*model.ProcessedPostGameCarnageReport, error) {
 	var entity model.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time

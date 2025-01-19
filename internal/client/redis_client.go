@@ -1,4 +1,4 @@
-package redis
+package client
 
 import (
 	"context"
@@ -8,17 +8,21 @@ import (
 	"rivenbot/internal/dto"
 )
 
+type RedisClient interface {
+	GetManifestEntity(ctx context.Context, hash string) (*dto.ManifestObject, error)
+}
+
 type RedisService struct {
-	client *redis.Client
+	Client *redis.Client
 }
 
 func NewRedisService(client *redis.Client) *RedisService {
-	return &RedisService{client: client}
+	return &RedisService{Client: client}
 }
 
 // Returns a given manifest entity based on a hash
 func (r *RedisService) GetManifestEntity(ctx context.Context, hash string) (*dto.ManifestObject, error) {
-	result, err := r.client.Get(ctx, hash).Result()
+	result, err := r.Client.Get(ctx, hash).Result()
 	if err != nil {
 		return nil, err
 	}
