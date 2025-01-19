@@ -271,13 +271,13 @@ func resolveFromBeginning(pgcr *dto.PostGameCarnageReport, flawless bool) (*bool
 		return &pgcr.ActivityWasStartedFromBeginning, nil
 	} else if startTime.Before(beyondLightStart) {
 
-		scourgeCriteria := pgcr.ActivityDetails.ActivityHash == sotpHash1 || pgcr.ActivityDetails.ActivityHash == sotpHash2
-		leviathanCriteria := leviHashes[pgcr.ActivityDetails.ActivityHash]
+		isScourge := pgcr.ActivityDetails.ActivityHash == sotpHash1 || pgcr.ActivityDetails.ActivityHash == sotpHash2
+		isLeviathan := leviHashes[pgcr.ActivityDetails.ActivityHash]
 
-		if scourgeCriteria {
+		if isScourge {
 			*result = pgcr.StartingPhaseIndex <= 1
 			return result, nil
-		} else if leviathanCriteria {
+		} else if isLeviathan {
 			*result = pgcr.StartingPhaseIndex == 0 || pgcr.StartingPhaseIndex == 2
 			return result, nil
 		} else {

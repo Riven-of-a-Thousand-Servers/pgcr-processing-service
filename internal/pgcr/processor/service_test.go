@@ -36,7 +36,7 @@ var pgcrTests = map[string]struct {
 	size      int
 }{
 	"solo_flawless_pgcr": {
-		inputFile: "../../testdata/solo_flawless_pgcr.json",
+		inputFile: "solo_flawless_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Last Wish",
@@ -49,7 +49,7 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"duo_flawless_pgcr": {
-		inputFile: "../../testdata/duo_flawless_pgcr.json",
+		inputFile: "duo_flawless_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Vault of Glass: Normal",
@@ -62,7 +62,7 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"trio_flawless_pgcr": {
-		inputFile: "../../testdata/trio_flawless_pgcr.json",
+		inputFile: "trio_flawless_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "King's Fall: Normal",
@@ -75,7 +75,7 @@ var pgcrTests = map[string]struct {
 		trio:     true,
 	},
 	"flawless_pgcr": {
-		inputFile: "../../testdata/flawless_pgcr.json",
+		inputFile: "flawless_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Crota's End: Normal",
@@ -88,7 +88,7 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"solo_pgcr": {
-		inputFile: "../../testdata/solo_pgcr.json",
+		inputFile: "solo_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
@@ -101,7 +101,7 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"duo_pgcr": {
-		inputFile: "../../testdata/duo_pgcr.json",
+		inputFile: "duo_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Garden of Salvation",
@@ -114,7 +114,7 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"trio_pgcr": {
-		inputFile: "../../testdata/trio_pgcr.json",
+		inputFile: "trio_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
@@ -127,7 +127,7 @@ var pgcrTests = map[string]struct {
 		trio:     true,
 	},
 	"uncomplete_pgcr": {
-		inputFile: "../../testdata/not_completed_pgcr.json",
+		inputFile: "not_completed_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
@@ -140,13 +140,26 @@ var pgcrTests = map[string]struct {
 		trio:     false,
 	},
 	"various_characters_on_player_pgcr": {
-		inputFile: "../../testdata/various_character_pgcr.json",
+		inputFile: "various_character_pgcr.json",
 		response: &dto.ManifestObject{
 			DisplayProperties: dto.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
 			},
 		},
 		size:     4,
+		flawless: false,
+		solo:     false,
+		duo:      false,
+		trio:     false,
+	},
+	"beyond_light_pgcr": {
+		inputFile: "beyond_light_pgcr.json",
+		response: &dto.ManifestObject{
+			DisplayProperties: dto.DisplayProperties{
+				Name: "Deep Stone Crypt",
+			},
+		},
+		size:     10,
 		flawless: false,
 		solo:     false,
 		duo:      false,
@@ -197,9 +210,64 @@ func TestPgcrProcessing(t *testing.T) {
 	}
 }
 
+var freshness = map[string]struct {
+	inputFile string
+	fresh     bool
+}{
+	"beyong_light_pgcr": {
+		inputFile: "beyond_light_pgcr.json",
+		fresh:     false,
+	},
+	"witch_queen_pgcr": {
+		inputFile: "witch_queen_pgcr.json",
+		fresh:     false,
+	},
+	"pre_beyond_light_non_fresh_pgcr": {
+		inputFile: "pre_beyond_light_non_fresh_pgcr.json",
+		fresh:     false,
+	},
+	"pre_beyond_light_fresh_pgcr": {
+		inputFile: "pre_beyond_light_fresh_pgcr.json",
+		fresh:     true,
+	},
+}
+
+// Test various pgcr to see if they should be fresh or not
+func TestPgcrFreshness(t *testing.T) {
+	for test, params := range freshness {
+		t.Run(test, func(t *testing.T) {
+			pgcr, err := getPgcr(params.inputFile)
+			if err != nil {
+				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
+			}
+
+			mockedRedis := new(MockRedisService)
+
+			// Mock manifest calls
+			activityId := pgcr.ActivityDetails.ActivityHash
+			response := &dto.ManifestObject{
+				DisplayProperties: dto.DisplayProperties{
+					Name: "Last Wish",
+				},
+			}
+			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(response, nil)
+
+			processor := PGCRProcessor{
+				redisClient: mockedRedis,
+			}
+
+			_, processed, err := processor.Process(pgcr)
+
+			assert := assert.New(t)
+
+			assert.Equal(processed.FromBeginning, params.fresh, fmt.Sprintf("FromBeginning attribute should be %v", params.fresh))
+		})
+	}
+}
+
 // Utility to retrieve a pgcr json as test data
-func getPgcr(filePath string) (*dto.PostGameCarnageReport, error) {
-	bytes, err := os.ReadFile(filePath)
+func getPgcr(file string) (*dto.PostGameCarnageReport, error) {
+	bytes, err := os.ReadFile("../../testdata/" + file)
 	if err != nil {
 		return nil, err
 	}
