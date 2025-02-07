@@ -3,6 +3,7 @@ module rivenbot
 go 1.23.2
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/google/go-cmp v0.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.7.0
