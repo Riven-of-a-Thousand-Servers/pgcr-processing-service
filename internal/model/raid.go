@@ -9,4 +9,5 @@ type RaidEntity struct {
 	RaidDifficulty string
 	IsActive       bool
 	ReleaseDate    time.Time
+	RaidHash       int64
 }
