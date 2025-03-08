@@ -30,23 +30,11 @@ func (r *RaidRepository) Save(entity model.RaidEntity) (result *model.RaidEntity
 		return nil, fmt.Errorf("Error while inserting into raid table: %v", err)
 	}
 
-	var hashExists bool
-	hashExistsQuery := `
-    SELECT COUNT(*) > 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r.RaidDifficulty = rh.RaidDifficulty AND r.RaidName = rh.RaidName
-    WHERE rh.RaidHash = $1`
-	err = transaction.QueryRow(hashExistsQuery, entity.RaidHash).Scan(&hashExists)
-	if err != nil {
-		return nil, fmt.Errorf("Error executing query to find raid_hash [%d]: %v", entity.RaidHash, err)
-	}
-
-	if !hashExists {
-		_, err = transaction.Exec(`
+	_, err = transaction.Exec(`
       INSERT INTO raid_hash (raid_hash, raid_name, raid_difficulty)
-      VALUES ($1, $2, $3)`, entity.RaidHash, entity.RaidName, entity.RaidDifficulty)
-		if err != nil {
-			return nil, fmt.Errorf("Erro while inserting raid hash table [%d]: %v", entity.RaidHash, err)
-		}
+      VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, entity.RaidHash, entity.RaidName, entity.RaidDifficulty)
+	if err != nil {
+		return nil, fmt.Errorf("Erro while inserting raid hash table [%d]: %v", entity.RaidHash, err)
 	}
 
 	err = transaction.Commit()

@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS player
     membership_type          INTEGER,
     global_display_name      VARCHAR,
     global_display_name_code INTEGER,
-    display_name             VARCHAR
+    display_name             VARCHAR,
+    last_seen                TIMESTAMP
 );
 
 CREATE INDEX player_display_name_id ON player (display_name);
