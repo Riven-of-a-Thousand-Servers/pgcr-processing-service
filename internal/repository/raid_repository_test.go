@@ -32,12 +32,6 @@ func TestSaveRaid(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(`
-    SELECT COUNT\(\*\) \> 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r\.RaidDifficulty \= rh.RaidDifficulty AND r\.RaidName \= rh.RaidName
-    WHERE rh\.RaidHash \= \$1`).
-		WithArgs(raid.RaidHash).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectExec(`INSERT INTO raid_hash`).
 		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -83,12 +77,9 @@ func TestSaveRaidWithoutRaidHash(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(`
-    SELECT COUNT\(\*\) \> 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r\.RaidDifficulty \= rh.RaidDifficulty AND r\.RaidName \= rh.RaidName
-    WHERE rh\.RaidHash \= \$1`).
-		WithArgs(raid.RaidHash).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec(`INSERT INTO raid_hash`).
+		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	// when: save is called for a Raid
@@ -166,12 +157,8 @@ func TestSaveRaidShouldRollbackOnExistsQueryFailure(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(`
-    SELECT COUNT\(\*\) \> 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r\.RaidDifficulty \= rh.RaidDifficulty AND r\.RaidName \= rh.RaidName
-    WHERE rh\.RaidHash \= \$1`).
-		WithArgs(raid.RaidHash).
-		WillReturnError(fmt.Errorf("Some error when doing exists query"))
+	mock.ExpectExec("INSERT INTO raid_hash").WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
+		WillReturnError(fmt.Errorf("Error inserting into raid_hash"))
 	mock.ExpectRollback()
 
 	// when: save is called for a Raid
@@ -181,52 +168,6 @@ func TestSaveRaidShouldRollbackOnExistsQueryFailure(t *testing.T) {
 	}
 
 	// then: an error is returned when trying to find raid_hash fails
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("There were unfulfilled expectation: %v", err)
-	}
-}
-
-func TestSaveRaidShouldRollbackOnRaidHashInsertFailure(t *testing.T) {
-	// given a raid entity from a PGCR
-	raid := model.RaidEntity{
-		RaidName:       "Last Wish",
-		RaidDifficulty: "Normal",
-		IsActive:       true,
-		ReleaseDate:    time.Now(),
-		RaidHash:       4891237913,
-	}
-
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Error establishing stub connection to database")
-	}
-
-	raidRepository := RaidRepository{
-		Conn: db,
-	}
-
-	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO raid").
-		WithArgs(raid.RaidName, raid.RaidDifficulty, raid.IsActive, raid.ReleaseDate).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(`
-    SELECT COUNT\(\*\) \> 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r\.RaidDifficulty \= rh.RaidDifficulty 
-      AND r\.RaidName \= rh.RaidName
-    WHERE rh\.RaidHash \= \$1`).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectExec("INSERT INTO raid_hash").
-		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
-		WillReturnError(fmt.Errorf("Something bad happened when inserting raid_hash"))
-	mock.ExpectRollback()
-
-	// when: save is called for a Raid
-	_, err = raidRepository.Save(raid)
-	if err == nil {
-		t.Errorf("Was expecting error, got none: %v", err)
-	}
-
-	// then: an error is expected to be returned for insertion failure on raid_hash table
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("There were unfulfilled expectation: %v", err)
 	}
@@ -255,12 +196,6 @@ func TestSaveRaidShouldRollbackOnTxCommitFailure(t *testing.T) {
 	mock.ExpectExec("INSERT INTO raid").
 		WithArgs(raid.RaidName, raid.RaidDifficulty, raid.IsActive, raid.ReleaseDate).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(`
-    SELECT COUNT\(\*\) \> 0 AS exists
-    FROM raid r JOIN raid_hash rh ON r\.RaidDifficulty \= rh.RaidDifficulty 
-      AND r\.RaidName \= rh.RaidName
-    WHERE rh\.RaidHash \= \$1`).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectExec("INSERT INTO raid_hash").
 		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -269,11 +204,13 @@ func TestSaveRaidShouldRollbackOnTxCommitFailure(t *testing.T) {
 
 	// when: save is called for a Raid
 	_, err = raidRepository.Save(raid)
+
+	// then: an error is expected
 	if err == nil {
 		t.Errorf("Was expecting error, got none: %v", err)
 	}
 
-	// then: the result didn't return an error
+	// and: the result didn't return an error
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("There were unfulfilled expectation: %v", err)
 	}

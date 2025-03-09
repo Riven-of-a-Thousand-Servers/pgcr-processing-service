@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"rivenbot/internal/model"
-	"time"
 )
 
 type PlayerRepository struct {
@@ -28,7 +27,7 @@ func (r *PlayerRepository) Save(entity model.PlayerEntity) (result *model.Player
     VALUES ($1, $2, $3, $4, $5, $6) 
     ON CONFLICT(membership_id) DO UPDATE
     SET last_seen = EXCLUDED.last_seen`,
-		entity.MembershipId, entity.MembershipType, entity.DisplayName, entity.DisplayNameCode, entity.DisplayName, time.Now())
+		entity.MembershipId, entity.MembershipType, entity.DisplayName, entity.DisplayNameCode, entity.DisplayName, entity.LastSeen)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error while inserting into player table: %v", err)

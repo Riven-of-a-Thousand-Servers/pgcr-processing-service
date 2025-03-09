@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"rivenbot/internal/model"
 )
 
@@ -30,11 +31,16 @@ func (r *RaidRepository) Save(entity model.RaidEntity) (result *model.RaidEntity
 		return nil, fmt.Errorf("Error while inserting into raid table: %v", err)
 	}
 
-	_, err = transaction.Exec(`
+	row, err := transaction.Exec(`
       INSERT INTO raid_hash (raid_hash, raid_name, raid_difficulty)
       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, entity.RaidHash, entity.RaidName, entity.RaidDifficulty)
 	if err != nil {
-		return nil, fmt.Errorf("Erro while inserting raid hash table [%d]: %v", entity.RaidHash, err)
+		return nil, fmt.Errorf("Error while inserting raid hash table [%d]: %v", entity.RaidHash, err)
+	}
+
+	rows, err := row.RowsAffected()
+	if err != nil && rows > 0 {
+		log.Printf("Inserted %d new raid hashes for raid [%s:%s]", rows, entity.RaidName, entity.RaidDifficulty)
 	}
 
 	err = transaction.Commit()
