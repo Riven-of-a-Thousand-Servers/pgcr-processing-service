@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestSavePgcr(t *testing.T) {
+func TestAddRawRaidPgcr_Success(t *testing.T) {
 	// given: a raid pgcr to save
 	pgcr := model.RaidPgcr{
 		InstanceId: 12377100310231,
@@ -22,16 +22,21 @@ func TestSavePgcr(t *testing.T) {
 
 	defer db.Close()
 
-	pgcrRepository := PgcrRepository{
+	pgcrRepository := RawPgcrRepository{
 		Conn: db,
 	}
 
-	// when: save is called
 	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO raid_pgcr").WithArgs(pgcr.InstanceId, pgcr.Blob).WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
 
-	result, err := pgcrRepository.Save(pgcr)
+	// when: save is called
+	mock.ExpectExec("INSERT INTO raid_pgcr").WithArgs(pgcr.InstanceId, pgcr.Blob).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	result, err := pgcrRepository.AddRawPgcr(tx, pgcr)
 
 	// then: the result didn't return an error
 	assert := assert.New(t)
@@ -44,7 +49,7 @@ func TestSavePgcr(t *testing.T) {
 	}
 }
 
-func TestSavePgcrShouldRollback(t *testing.T) {
+func TestAddRawRaidPgcr_ErrorOnRaidPgcrInsert(t *testing.T) {
 	// given: a raid pgcr to save
 	pgcr := model.RaidPgcr{
 		InstanceId: 123389859102,
@@ -58,17 +63,23 @@ func TestSavePgcrShouldRollback(t *testing.T) {
 
 	defer db.Close()
 
-	pgcrRepository := PgcrRepository{
+	pgcrRepository := RawPgcrRepository{
 		Conn: db,
 	}
 
-	// when: save is called
 	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO raid_pgcr").WithArgs(pgcr.InstanceId, pgcr.Blob).WillReturnError(fmt.Errorf("Some error when inserting into database"))
-	mock.ExpectRollback()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
+
+	// when: save is called
+	mock.ExpectExec("INSERT INTO raid_pgcr").
+		WithArgs(pgcr.InstanceId, pgcr.Blob).
+		WillReturnError(fmt.Errorf("Some error when inserting into database"))
 
 	// then: we expect an error to be raised when saving
-	if _, err = pgcrRepository.Save(pgcr); err == nil {
+	if _, err = pgcrRepository.AddRawPgcr(tx, pgcr); err == nil {
 		t.Errorf("Was expecting error, got none")
 	}
 

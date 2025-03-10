@@ -14,6 +14,6 @@ type PlayerEntity struct {
 type PlayerCharacterEntity struct {
 	CharacterId        int64
 	CharacterClass     string
-	CharacterEmblem    string
+	CharacterEmblem    int64
 	PlayerMembershipId int64
 }

@@ -8,7 +8,7 @@ import (
 )
 
 type PgcrWebWorker struct {
-	Repository repository.PgcrRepository
+	Repository repository.RawPgcrRepository
 	Client     client.BungieHttpClient
 	Mapper     mapper.PgcrMapper
 }

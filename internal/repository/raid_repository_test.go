@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSaveRaid(t *testing.T) {
+func TestAddRaid_Success(t *testing.T) {
 	// given a raid entity from a PGCR
 	raid := model.RaidEntity{
 		RaidName:       "Last Wish",
@@ -29,16 +29,22 @@ func TestSaveRaid(t *testing.T) {
 		Conn: db,
 	}
 
+	defer db.Close()
+
 	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
+
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`INSERT INTO raid_hash`).
 		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
 
 	// when: save is called for a Raid
-	result, err := raidRepository.Save(raid)
+	result, err := raidRepository.AddRaidInfo(tx, raid)
 
 	// then: the result didn't return an error
 	assert := assert.New(t)
@@ -55,7 +61,7 @@ func TestSaveRaid(t *testing.T) {
 	}
 }
 
-func TestSaveRaidWithoutRaidHash(t *testing.T) {
+func TestAddRaidInfo_SuccessNoRaidHashAdded(t *testing.T) {
 	// given a raid entity from a PGCR
 	raid := model.RaidEntity{
 		RaidName:       "Last Wish",
@@ -70,20 +76,26 @@ func TestSaveRaidWithoutRaidHash(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
+	defer db.Close()
+
 	raidRepository := RaidRepository{
 		Conn: db,
 	}
 
 	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
+
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`INSERT INTO raid_hash`).
 		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectCommit()
 
 	// when: save is called for a Raid
-	result, err := raidRepository.Save(raid)
+	result, err := raidRepository.AddRaidInfo(tx, raid)
 
 	// then: the result didn't return an error
 	assert := assert.New(t)
@@ -99,7 +111,7 @@ func TestSaveRaidWithoutRaidHash(t *testing.T) {
 	}
 }
 
-func TestSaveRaidShouldRollbackOnInsertFailure(t *testing.T) {
+func TestAddRaidInfo_ErrorOnRaidInsert(t *testing.T) {
 	// given a raid entity from a PGCR
 	raid := model.RaidEntity{
 		RaidName:       "Last Wish",
@@ -117,14 +129,20 @@ func TestSaveRaidShouldRollbackOnInsertFailure(t *testing.T) {
 		Conn: db,
 	}
 
+	defer db.Close()
+
 	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
+
 	mock.ExpectExec(`INSERT INTO raid \(raid_name, raid\_difficulty, is\_active, release\_date\)`).
 		WithArgs(raid.RaidName, raid.RaidDifficulty, raid.IsActive, raid.ReleaseDate).
 		WillReturnError(fmt.Errorf("Some error when inserting into database"))
-	mock.ExpectRollback()
 
 	// when: save is called for a Raid
-	_, err = raidRepository.Save(raid)
+	_, err = raidRepository.AddRaidInfo(tx, raid)
 	if err == nil {
 		t.Errorf("Was expecting error, got none: %v", err)
 	}
@@ -135,7 +153,7 @@ func TestSaveRaidShouldRollbackOnInsertFailure(t *testing.T) {
 	}
 }
 
-func TestSaveRaidShouldRollbackOnExistsQueryFailure(t *testing.T) {
+func TestAddRaidInfo_ErrorOnRaidHashInsert(t *testing.T) {
 	// given a raid entity from a PGCR
 	raid := model.RaidEntity{
 		RaidName:       "Last Wish",
@@ -150,67 +168,30 @@ func TestSaveRaidShouldRollbackOnExistsQueryFailure(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
+	defer db.Close()
+
 	raidRepository := RaidRepository{
 		Conn: db,
 	}
 
 	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Error beginning transaction: %v", err)
+	}
+
 	mock.ExpectExec("INSERT INTO raid").WithArgs(raid.RaidName, raid.RaidDifficulty,
 		raid.IsActive, raid.ReleaseDate).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO raid_hash").WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
 		WillReturnError(fmt.Errorf("Error inserting into raid_hash"))
-	mock.ExpectRollback()
 
 	// when: save is called for a Raid
-	_, err = raidRepository.Save(raid)
+	_, err = raidRepository.AddRaidInfo(tx, raid)
 	if err == nil {
 		t.Errorf("Was expecting error, got none: %v", err)
 	}
 
 	// then: an error is returned when trying to find raid_hash fails
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("There were unfulfilled expectation: %v", err)
-	}
-}
-
-func TestSaveRaidShouldRollbackOnTxCommitFailure(t *testing.T) {
-	// given a raid entity from a PGCR
-	raid := model.RaidEntity{
-		RaidName:       "Last Wish",
-		RaidDifficulty: "Normal",
-		IsActive:       true,
-		ReleaseDate:    time.Now(),
-		RaidHash:       4891237913,
-	}
-
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Error establishing stub connection to database")
-	}
-
-	raidRepository := RaidRepository{
-		Conn: db,
-	}
-
-	mock.ExpectBegin()
-	mock.ExpectExec("INSERT INTO raid").
-		WithArgs(raid.RaidName, raid.RaidDifficulty, raid.IsActive, raid.ReleaseDate).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("INSERT INTO raid_hash").
-		WithArgs(raid.RaidHash, raid.RaidName, raid.RaidDifficulty).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit().
-		WillReturnError(fmt.Errorf("Some error when commiting a transaction"))
-
-	// when: save is called for a Raid
-	_, err = raidRepository.Save(raid)
-
-	// then: an error is expected
-	if err == nil {
-		t.Errorf("Was expecting error, got none: %v", err)
-	}
-
-	// and: the result didn't return an error
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("There were unfulfilled expectation: %v", err)
 	}

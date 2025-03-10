@@ -1,5 +1,9 @@
 package repository
 
+import (
+	"database/sql"
+)
+
 type Repository[T any] interface {
-	save(entity T) (*T, error)
+	save(tx *sql.Tx, entity T) (*T, error)
 }

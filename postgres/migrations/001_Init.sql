@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS player_character
 (
     character_id         BIGINT PRIMARY KEY,
     character_class      CHARACTER_CLASS,
-    current_emblem       VARCHAR,
+    current_emblem       BIGINT,
     player_membership_id BIGINT,
     CONSTRAINT membership_id_fk FOREIGN KEY (player_membership_id) REFERENCES player (membership_id)
 );
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS raid_hash
     CONSTRAINT raid_fk FOREIGN KEY (raid_name, raid_difficulty) REFERENCES raid (raid_name, raid_difficulty) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS player_raid_aggregate_stats
+CREATE TABLE IF NOT EXISTS player_raid_stats
 (
     raid_name            RAID_NAME,
     raid_difficulty      RAID_DIFFICULTY,
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS player_raid_aggregate_stats
     CONSTRAINT membership_id_fk FOREIGN KEY (player_membership_id) REFERENCES player (membership_id)
 );
 
-CREATE TABLE IF NOT EXISTS player_raid_activity_stats
+CREATE TABLE IF NOT EXISTS instance_activity_stats
 (
     instance_id          BIGINT,
     player_membership_id BIGINT,
@@ -122,7 +122,9 @@ CREATE TABLE IF NOT EXISTS player_raid_activity_stats
     kills                INTEGER,
     deaths               INTEGER,
     assists              INTEGER,
-    killsDeathsAssists   FLOAT,
+    kills_deaths_assists FLOAT,
+    kills_deaths_ratio   FLOAT,
+    efficiency           FLOAT,
     duration_seconds     INTEGER,
     time_played_seconds  INTEGER,
     CONSTRAINT player_raid_activity_stats_pk PRIMARY KEY (instance_id, player_membership_id, player_character_id),

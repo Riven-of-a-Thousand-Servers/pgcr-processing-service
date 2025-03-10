@@ -46,7 +46,7 @@ func main() {
 	client := client.BungieHttpClient{
 		Client: &httpClient,
 	}
-	repository := repository.PgcrRepository{
+	repository := repository.RawPgcrRepository{
 		Conn: db,
 	}
 	mapper := mapper.PgcrMapper{
