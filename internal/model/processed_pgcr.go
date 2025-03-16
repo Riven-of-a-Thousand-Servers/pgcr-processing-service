@@ -1,11 +1,6 @@
 package model
 
 import (
-	"errors"
-	"fmt"
-	"log"
-	"strings"
-	"sync"
 	"time"
 )
 
@@ -16,21 +11,6 @@ const (
 	WARLOCK CharacterClass = "WARLOCK"
 	HUNTER  CharacterClass = "HUNTER"
 )
-
-var reverseCharacterClassLabels map[string]CharacterClass
-var characterClassLabels = map[CharacterClass]string{
-	TITAN:   "Titan",
-	WARLOCK: "Warlock",
-	HUNTER:  "Hunter",
-}
-
-func (c CharacterClass) Label() string {
-	if label, exists := characterClassLabels[c]; exists {
-		return label
-	} else {
-		return ""
-	}
-}
 
 type RaidName string
 
@@ -51,98 +31,15 @@ const (
 	SCOURGE_OF_THE_PAST RaidName = "SCOURGE_OF_THE_PAST"
 )
 
-var reverseRaidNameLabels map[string]RaidName
-var raidNameLabels = map[RaidName]string{
-	SALVATIONS_EDGE:     "Salvation's Edge",
-	CROTAS_END:          "Crota's End",
-	ROOT_OF_NIGHTMARES:  "Root of Nightmares",
-	KINGS_FALL:          "King's Fall",
-	VOW_OF_THE_DISCIPLE: "Vow of the Discple",
-	VAULT_OF_GLASS:      "Vault of Glass",
-	DEEP_STONE_CRYPT:    "Deep Stone Crypt",
-	GARDEN_OF_SALVATION: "Garden of Salvation",
-	CROWN_OF_SORROW:     "Crown of Sorrow",
-	LAST_WISH:           "Last Wish",
-	SPIRE_OF_STARS:      "Leviathan: Spire of Stars",
-	EATER_OF_WORLDS:     "Leviathan: Eater of Worlds",
-	LEVIATHAN:           "Leviathan",
-	SCOURGE_OF_THE_PAST: "Scourge of the Past",
-}
-
-func (rn RaidName) Label() string {
-	if label, exists := raidNameLabels[rn]; exists {
-		return label
-	} else {
-		return ""
-	}
-}
-
 type RaidDifficulty string
 
 const (
-	NORMAL       RaidDifficulty = "NORMAL"
-	STANDARD     RaidDifficulty = "STANDARD"
-	PRESTIGE     RaidDifficulty = "PRESTIGE"
-	MASTER       RaidDifficulty = "MASTER"
-	GUIDED_GAMES RaidDifficulty = "GUIDED_GAMES"
+	NORMAL         RaidDifficulty = "NORMAL"
+	PRESTIGE       RaidDifficulty = "PRESTIGE"
+	MASTER         RaidDifficulty = "MASTER"
+	GUIDED_GAMES   RaidDifficulty = "GUIDED_GAMES"
+	CHALLENGE_MODE RaidDifficulty = "CHALLENGE_MODE"
 )
-
-var reverseRaidDifficultyLabels map[string]RaidDifficulty
-var raidDifficultyLabels = map[RaidDifficulty]string{
-	NORMAL:       "Normal",
-	STANDARD:     "Standard",
-	PRESTIGE:     "Prestige",
-	MASTER:       "Master",
-	GUIDED_GAMES: "Guided Games",
-}
-
-var once sync.Once
-
-// Initializes the reverse look up maps only once
-func initReverseMaps() {
-	once.Do(func() {
-		reverseRaidDifficultyLabels = make(map[string]RaidDifficulty)
-		for raidDifficulty, label := range raidDifficultyLabels {
-			reverseRaidDifficultyLabels[label] = raidDifficulty
-		}
-
-		reverseRaidNameLabels = make(map[string]RaidName)
-		for raidName, label := range raidNameLabels {
-			reverseRaidNameLabels[label] = raidName
-		}
-
-		reverseCharacterClassLabels = make(map[string]CharacterClass)
-		for characterClass, label := range characterClassLabels {
-			reverseCharacterClassLabels[label] = characterClass
-		}
-	})
-}
-
-func Raid(label string) (RaidName, RaidDifficulty, error) {
-	initReverseMaps()
-	tokens := strings.Split(label, ":")
-
-	if len(tokens) <= 0 {
-		log.Panicf("Unable to tokenize raid Manifest Display Name [%s]", label)
-		return "", "", errors.New("Unable to tokenize raid Manifest Display Name")
-	}
-	rawRaidName := strings.TrimSpace(tokens[0])
-	rawRaidDifficulty := "Normal" // Default difficulty
-	if len(tokens) > 1 {
-		rawRaidDifficulty = strings.TrimSpace(tokens[1])
-	}
-
-	raidName, a := reverseRaidNameLabels[rawRaidName]
-	raidDifficulty, b := reverseRaidDifficultyLabels[rawRaidDifficulty]
-	if strings.EqualFold(rawRaidDifficulty, "Standard") {
-		rawRaidDifficulty = string(reverseRaidDifficultyLabels["Normal"])
-	}
-	if a && b {
-		return raidName, raidDifficulty, nil
-	} else {
-		return "", "", fmt.Errorf("RaidName [%s] exists: [%v]. Raid difficulty [%s] exists: [%v]", raidName, a, raidDifficulty, b)
-	}
-}
 
 type ProcessedPostGameCarnageReport struct {
 	StartTime         time.Time           `json:"startTime"`

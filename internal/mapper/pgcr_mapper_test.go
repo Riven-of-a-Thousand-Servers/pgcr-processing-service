@@ -12,6 +12,7 @@ import (
 
 	"rivenbot/internal/dto"
 	"rivenbot/internal/model"
+	"rivenbot/internal/utils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -293,7 +294,7 @@ func assertPgcrFields(processed model.ProcessedPostGameCarnageReport, pgcr dto.P
 		assert.Error(err, "Error converting instance ID from string to int64")
 	}
 	endTime := startTime.Add(time.Second * time.Duration(int32(pgcr.Entries[0].Values["activityDurationSeconds"].Basic.Value)))
-	raidName, raidDifficulty, err := model.Raid(manifestObject.DisplayProperties.Name)
+	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(manifestObject.DisplayProperties.Name)
 	if err != nil {
 		assert.Errorf(err, "Something bad happened when parsing the manifest activity hash")
 	}

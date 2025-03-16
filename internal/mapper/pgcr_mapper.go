@@ -93,7 +93,7 @@ func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient
 		return nil, err
 	}
 
-	raidName, raidDifficulty, err := model.Raid(maniestResponse.DisplayProperties.Name)
+	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(maniestResponse.DisplayProperties.Name)
 	if err != nil {
 		log.Panic("Unable to parse activity raid name and raid difficulty")
 		return nil, err
