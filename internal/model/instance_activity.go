@@ -9,6 +9,9 @@ type InstanceActivityEntity struct {
 	Kills              int32
 	Deaths             int32
 	Assists            int32
+	MeleeKills         int
+	SuperKills         int
+	GrenadeKills       int
 	KillsDeathsAssists float32
 	KillsDeathsRatio   float32
 	Efficiency         float32
