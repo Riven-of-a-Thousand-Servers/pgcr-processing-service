@@ -1,8 +1,12 @@
 package model
 
+import (
+	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+)
+
 type PlayerRaidStatsEntity struct {
-	RaidName           RaidName
-	RaidDifficulty     RaidDifficulty
+	RaidName           types.RaidName
+	RaidDifficulty     types.RaidDifficulty
 	PlayerMembershipId int64
 	Kills              int
 	Deaths             int

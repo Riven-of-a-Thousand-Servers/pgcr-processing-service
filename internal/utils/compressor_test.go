@@ -9,19 +9,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	"github.com/google/go-cmp/cmp"
-	"rivenbot/internal/dto"
 )
 
 // Test whether the pgcr comperssion works as expected
 func TestPgcrCompression(t *testing.T) {
 	// given: a processed PGCR
 	now := time.Now().String()
-	pgcr := dto.PostGameCarnageReport{
+	pgcr := types.PostGameCarnageReport{
 		Period:                          now,
 		ActivityWasStartedFromBeginning: true,
 		StartingPhaseIndex:              0,
-		ActivityDetails: dto.ActivityDetails{
+		ActivityDetails: types.ActivityDetails{
 			ReferenceId:    128041231,
 			ActivityHash:   128041231,
 			InstanceId:     "177721245",
@@ -30,10 +30,10 @@ func TestPgcrCompression(t *testing.T) {
 			IsPrivate:      false,
 			MembershipType: 0,
 		},
-		Entries: []dto.PostGameCarnageReportEntry{
+		Entries: []types.PostGameCarnageReportEntry{
 			{
-				Player: dto.PlayerInformation{
-					DestinyUserInfo: dto.DestinyUserInfo{
+				Player: types.PlayerInformation{
+					DestinyUserInfo: types.DestinyUserInfo{
 						IconPath:                    "/common/destiny2_content/icons/e63b0d3618767f1fefed5e860b58da5c.png",
 						IsPublic:                    true,
 						MembershipType:              2,
@@ -50,57 +50,57 @@ func TestPgcrCompression(t *testing.T) {
 					EmblemHash:     908153542,
 				},
 				CharacterId: "2305843009261769284",
-				Values: map[string]dto.Metric{
+				Values: map[string]types.Metric{
 					"kills": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        125.0,
 							DisplayValue: "125",
 						},
 					},
 					"assists": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        5.0,
 							DisplayValue: "5",
 						},
 					},
 					"completed": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        1.0,
 							DisplayValue: "Yes",
 						},
 					},
 					"deaths": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        6.0,
 							DisplayValue: "6",
 						},
 					},
 					"killsDeathsRatio": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        2.5,
 							DisplayValue: "2.50",
 						},
 					},
 					"killsDeathsAssists": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        2.66666666666,
 							DisplayValue: "2.66",
 						},
 					},
 					"activityDurationSeconds": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        953.0,
 							DisplayValue: "15m 53s",
 						},
 					},
 					"timePlayedSeconds": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        832.0,
 							DisplayValue: "13m 52s",
 						},
 					},
 					"playerCount": {
-						Basic: dto.Basic{
+						Basic: types.Basic{
 							Value:        8.0,
 							DisplayValue: "8",
 						},
@@ -127,7 +127,7 @@ func TestPgcrCompression(t *testing.T) {
 			t.Fatalf("Error reading decompressed data: %v", err)
 		}
 
-		var result dto.PostGameCarnageReport
+		var result types.PostGameCarnageReport
 
 		err = json.Unmarshal(decompressed, &result)
 		if err != nil {

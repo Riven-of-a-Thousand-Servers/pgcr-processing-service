@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"rivenbot/internal/dto"
-	"rivenbot/internal/model"
-	"rivenbot/internal/utils"
+	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,14 +21,14 @@ type MockRedisService struct {
 	mock.Mock
 }
 
-func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*dto.ManifestObject, error) {
+func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*types.ManifestObject, error) {
 	args := m.Called(ctx, key)
-	return args.Get(0).(*dto.ManifestObject), args.Error(1)
+	return args.Get(0).(*types.ManifestObject), args.Error(1)
 }
 
 var pgcrTests = map[string]struct {
 	inputFile string
-	response  *dto.ManifestObject
+	response  *types.ManifestObject
 	flawless  bool
 	solo      bool
 	duo       bool
@@ -38,8 +37,8 @@ var pgcrTests = map[string]struct {
 }{
 	"solo_flawless_pgcr": {
 		inputFile: "solo_flawless_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Last Wish",
 			},
 		},
@@ -51,8 +50,8 @@ var pgcrTests = map[string]struct {
 	},
 	"duo_flawless_pgcr": {
 		inputFile: "duo_flawless_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Vault of Glass: Normal",
 			},
 		},
@@ -64,8 +63,8 @@ var pgcrTests = map[string]struct {
 	},
 	"trio_flawless_pgcr": {
 		inputFile: "trio_flawless_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "King's Fall: Normal",
 			},
 		},
@@ -77,8 +76,8 @@ var pgcrTests = map[string]struct {
 	},
 	"flawless_pgcr": {
 		inputFile: "flawless_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Crota's End: Normal",
 			},
 		},
@@ -90,8 +89,8 @@ var pgcrTests = map[string]struct {
 	},
 	"solo_pgcr": {
 		inputFile: "solo_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
 			},
 		},
@@ -103,8 +102,8 @@ var pgcrTests = map[string]struct {
 	},
 	"duo_pgcr": {
 		inputFile: "duo_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Garden of Salvation",
 			},
 		},
@@ -116,8 +115,8 @@ var pgcrTests = map[string]struct {
 	},
 	"trio_pgcr": {
 		inputFile: "trio_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
 			},
 		},
@@ -129,8 +128,8 @@ var pgcrTests = map[string]struct {
 	},
 	"uncomplete_pgcr": {
 		inputFile: "not_completed_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
 			},
 		},
@@ -142,8 +141,8 @@ var pgcrTests = map[string]struct {
 	},
 	"various_characters_on_player_pgcr": {
 		inputFile: "various_character_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Root of Nightmares: Standard",
 			},
 		},
@@ -155,8 +154,8 @@ var pgcrTests = map[string]struct {
 	},
 	"beyond_light_pgcr": {
 		inputFile: "beyond_light_pgcr.json",
-		response: &dto.ManifestObject{
-			DisplayProperties: dto.DisplayProperties{
+		response: &types.ManifestObject{
+			DisplayProperties: types.DisplayProperties{
 				Name: "Deep Stone Crypt",
 			},
 		},
@@ -189,7 +188,7 @@ func TestPgcrMapping(t *testing.T) {
 			_, processed, err := processor.Map(pgcr)
 
 			assert := assert.New(t)
-			slices.SortFunc(processed.PlayerInformation, func(a, b model.PlayerInformation) int {
+			slices.SortFunc(processed.PlayerInformation, func(a, b types.PlayerData) int {
 				return compareInt(a.MembershipId, b.MembershipId)
 			})
 
@@ -246,8 +245,8 @@ func TestPgcrFreshness(t *testing.T) {
 
 			// Mock manifest calls
 			activityId := pgcr.ActivityDetails.ActivityHash
-			response := &dto.ManifestObject{
-				DisplayProperties: dto.DisplayProperties{
+			response := &types.ManifestObject{
+				DisplayProperties: types.DisplayProperties{
 					Name: "Last Wish",
 				},
 			}
@@ -267,13 +266,13 @@ func TestPgcrFreshness(t *testing.T) {
 }
 
 // Utility to retrieve a pgcr json as test data
-func getPgcr(file string) (*dto.PostGameCarnageReport, error) {
+func getPgcr(file string) (*types.PostGameCarnageReport, error) {
 	bytes, err := os.ReadFile("../testdata/" + file)
 	if err != nil {
 		return nil, err
 	}
 
-	var pgcr dto.PostGameCarnageReportResponse
+	var pgcr types.PostGameCarnageReportResponse
 
 	err = json.Unmarshal(bytes, &pgcr)
 	if err != nil {
@@ -284,7 +283,7 @@ func getPgcr(file string) (*dto.PostGameCarnageReport, error) {
 }
 
 // Utility to make assertions on general PGCRs fields
-func assertPgcrFields(processed model.ProcessedPostGameCarnageReport, pgcr dto.PostGameCarnageReport, manifestObject dto.ManifestObject, assert *assert.Assertions) {
+func assertPgcrFields(processed types.ProcessedPostGameCarnageReport, pgcr types.PostGameCarnageReport, manifestObject types.ManifestObject, assert *assert.Assertions) {
 	startTime, err := time.Parse(time.RFC3339, pgcr.Period)
 	if err != nil {
 		assert.Errorf(err, "Error parsing time: %v", err)
@@ -294,7 +293,7 @@ func assertPgcrFields(processed model.ProcessedPostGameCarnageReport, pgcr dto.P
 		assert.Error(err, "Error converting instance ID from string to int64")
 	}
 	endTime := startTime.Add(time.Second * time.Duration(int32(pgcr.Entries[0].Values["activityDurationSeconds"].Basic.Value)))
-	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(manifestObject.DisplayProperties.Name)
+	raidName, raidDifficulty, err := enums.GetRaidAndDifficulty(manifestObject.DisplayProperties.Name)
 	if err != nil {
 		assert.Errorf(err, "Something bad happened when parsing the manifest activity hash")
 	}
@@ -310,7 +309,7 @@ func assertPgcrFields(processed model.ProcessedPostGameCarnageReport, pgcr dto.P
 }
 
 // Assert players' fields in a PGCR, to be able to match players its necessary that the slices are sorted
-func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostGameCarnageReportEntry, assert *assert.Assertions) {
+func assertPlayers(playerData []types.PlayerData, pgcrEntries []types.PostGameCarnageReportEntry, assert *assert.Assertions) {
 	grouped, err := GroupCharacters(pgcrEntries)
 	if err != nil {
 		assert.Errorf(err, "Error while grouping characters for assertions")
@@ -326,7 +325,7 @@ func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostG
 		return compareInt(a, b)
 	})
 
-	for i, player := range playerInfo {
+	for i, player := range playerData {
 		membershipId, err := strconv.ParseInt(grouped[keys[i]][0].Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
 			assert.Error(err, "Something went wrong when parsing membership ID to Int64")
@@ -340,7 +339,7 @@ func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostG
 
 		// Character stuff
 		pgcrCharacters := grouped[player.MembershipId]
-		slices.SortFunc(pgcrCharacters, func(a, b dto.PostGameCarnageReportEntry) int {
+		slices.SortFunc(pgcrCharacters, func(a, b types.PostGameCarnageReportEntry) int {
 			ai, err := strconv.ParseInt(a.CharacterId, 10, 64)
 			if err != nil {
 				assert.Error(err, "Error parsing A characterId for sorting")
@@ -352,7 +351,7 @@ func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostG
 			return compareInt(ai, bi)
 		})
 
-		slices.SortFunc(player.PlayerCharacterInformation, func(a, b model.PlayerCharacterInformation) int {
+		slices.SortFunc(player.PlayerCharacterInformation, func(a, b types.PlayerCharacterInformation) int {
 			return compareInt(a.CharacterId, b.CharacterId)
 		})
 		assertPlayerCharacters(player.PlayerCharacterInformation, grouped[player.MembershipId], assert)
@@ -360,13 +359,13 @@ func assertPlayers(playerInfo []model.PlayerInformation, pgcrEntries []dto.PostG
 }
 
 // Assert all the data in player characters. Arrays must be sorted to work effectively
-func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr []dto.PostGameCarnageReportEntry, assert *assert.Assertions) {
+func assertPlayerCharacters(processed []types.PlayerCharacterInformation, pgcr []types.PostGameCarnageReportEntry, assert *assert.Assertions) {
 	for i, playerCharacter := range processed {
 		characterId, err := strconv.ParseInt(pgcr[i].CharacterId, 10, 64)
 		if err != nil {
 			assert.Error(err, "Something went wrong when parsing character ID to Int64")
 		}
-		characterClass := model.CharacterClass(pgcr[i].Player.CharacterClass)
+		characterClass := types.CharacterClass(pgcr[i].Player.CharacterClass)
 		assert.Equal(len(processed), len(pgcr), "Both slices should contain the same amount of characters for a player")
 		assert.Equal(int(pgcr[i].Values["kills"].Basic.Value), playerCharacter.Kills, "Kills should match")
 		assert.Equal(pgcr[i].Values["completed"].Basic.Value == 1.0, playerCharacter.ActivityCompleted, "Completed should be correct for the player")
@@ -384,11 +383,11 @@ func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr [
 		assert.Equal(int(pgcr[i].Extended.Abilities["weaponKillsMelee"].Basic.Value), playerCharacter.AbilityInformation.MeleeKills, "Melee kills should be equal to each other")
 		assert.Equal(int(pgcr[i].Extended.Abilities["weaponKillsSuper"].Basic.Value), playerCharacter.AbilityInformation.SuperKills, "Super kills should be equal to each other")
 
-		slices.SortFunc(playerCharacter.WeaponInformation, func(a, b model.CharacterWeaponInformation) int {
+		slices.SortFunc(playerCharacter.WeaponInformation, func(a, b types.CharacterWeaponInformation) int {
 			return compareInt(a.WeaponHash, b.WeaponHash)
 		})
 
-		slices.SortFunc(pgcr[i].Extended.Weapons, func(a, b dto.WeaponInformation) int {
+		slices.SortFunc(pgcr[i].Extended.Weapons, func(a, b types.WeaponInformation) int {
 			return compareInt(a.ReferenceId, b.ReferenceId)
 		})
 
@@ -397,7 +396,7 @@ func assertPlayerCharacters(processed []model.PlayerCharacterInformation, pgcr [
 }
 
 // Assert all weapons for a player character. Arrays must be sorted to work effectively
-func assertPlayerWeapons(processedWeapons []model.CharacterWeaponInformation, pgcrWeapons []dto.WeaponInformation, assert *assert.Assertions) {
+func assertPlayerWeapons(processedWeapons []types.CharacterWeaponInformation, pgcrWeapons []types.WeaponInformation, assert *assert.Assertions) {
 	for i, weapon := range processedWeapons {
 		assert.Equal(weapon.WeaponHash, pgcrWeapons[i].ReferenceId, "Weapon hashes should match")
 		assert.Equal(weapon.Kills, int(pgcrWeapons[i].Values["uniqueWeaponKills"].Basic.Value), "Weapon kills should match")

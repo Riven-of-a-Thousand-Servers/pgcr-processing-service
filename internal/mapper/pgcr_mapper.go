@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"rivenbot/internal/client"
-	"rivenbot/internal/dto"
-	"rivenbot/internal/model"
 	"rivenbot/internal/utils"
+
+	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 )
 
 type PgcrMapper struct {
@@ -41,7 +42,7 @@ var leviHashes = map[int64]bool{
 
 // This method maps the PGCR into a pre-processed format thats more suitable for features
 // Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
-func (p *PgcrMapper) Map(pgcr *dto.PostGameCarnageReport) ([]byte, *model.ProcessedPostGameCarnageReport, error) {
+func (p *PgcrMapper) Map(pgcr *types.PostGameCarnageReport) ([]byte, *types.ProcessedPostGameCarnageReport, error) {
 	processedPgcr, err := processPgcr(pgcr, p.RedisClient)
 	if err != nil {
 		log.Fatal(err)
@@ -56,8 +57,8 @@ func (p *PgcrMapper) Map(pgcr *dto.PostGameCarnageReport) ([]byte, *model.Proces
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient) (*model.ProcessedPostGameCarnageReport, error) {
-	var entity model.ProcessedPostGameCarnageReport
+func processPgcr(pgcr *types.PostGameCarnageReport, redisClient client.RedisClient) (*types.ProcessedPostGameCarnageReport, error) {
+	var entity types.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time
 	startTime, err := time.Parse(time.RFC3339, pgcr.Period)
@@ -93,7 +94,7 @@ func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient
 		return nil, err
 	}
 
-	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(maniestResponse.DisplayProperties.Name)
+	raidName, raidDifficulty, err := enums.GetRaidAndDifficulty(maniestResponse.DisplayProperties.Name)
 	if err != nil {
 		log.Panic("Unable to parse activity raid name and raid difficulty")
 		return nil, err
@@ -102,7 +103,7 @@ func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient
 	entity.RaidName = raidName
 	entity.RaidDifficulty = raidDifficulty
 
-	var playersGrouped = make(map[int64][]dto.PostGameCarnageReportEntry)
+	var playersGrouped = make(map[int64][]types.PostGameCarnageReportEntry)
 	for _, entry := range pgcr.Entries {
 		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
@@ -112,7 +113,7 @@ func processPgcr(pgcr *dto.PostGameCarnageReport, redisClient client.RedisClient
 		if ok {
 			playersGrouped[membershipId] = append(val, entry)
 		} else {
-			playersGrouped[membershipId] = []dto.PostGameCarnageReportEntry{entry}
+			playersGrouped[membershipId] = []types.PostGameCarnageReportEntry{entry}
 		}
 	}
 
@@ -156,15 +157,15 @@ Outerloop:
 
 // Takes in a map of grouped up PGCR entries by players' membershipIds and returns an array of PlayerInformation structs
 // Ensures that each player will have all their characters respectively
-func processPlayerInformation(groups map[int64][]dto.PostGameCarnageReportEntry) ([]model.PlayerInformation, error) {
-	result := []model.PlayerInformation{}
+func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntry) ([]types.PlayerData, error) {
+	result := []types.PlayerData{}
 	for membershipId, entries := range groups {
 		if len(entries) == 0 {
 			log.Printf("Player with membershipId [%d] has no entries, skipping\n", membershipId)
 			continue
 		}
 
-		playerInfo := model.PlayerInformation{
+		playerInfo := types.PlayerData{
 			MembershipId:          membershipId,
 			MembershipType:        entries[0].Player.DestinyUserInfo.MembershipType,
 			DisplayName:           entries[0].Player.DestinyUserInfo.DisplayName,
@@ -172,7 +173,7 @@ func processPlayerInformation(groups map[int64][]dto.PostGameCarnageReportEntry)
 			GlobalDisplayNameCode: entries[0].Player.DestinyUserInfo.BungieGlobalDisplayNameCode,
 		}
 
-		var characters []model.PlayerCharacterInformation
+		var characters []types.PlayerCharacterInformation
 		for _, e := range entries {
 			characterInfo, err := createPlayerCharacter(&e)
 			if err != nil {
@@ -192,13 +193,13 @@ func processPlayerInformation(groups map[int64][]dto.PostGameCarnageReportEntry)
 // Create an individual player character info struct based on a PGCR entry
 // This utilizes Redis to fetch several pre-indexed manifest objects
 // If querying Redis fails then this method return an error
-func createPlayerCharacter(entry *dto.PostGameCarnageReportEntry) (*model.PlayerCharacterInformation, error) {
-	characterInfo := model.PlayerCharacterInformation{
+func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.PlayerCharacterInformation, error) {
+	characterInfo := types.PlayerCharacterInformation{
 		ActivityCompleted: entry.Values["completed"].Basic.Value == 1.0,
-		WeaponInformation: []model.CharacterWeaponInformation{}, // empty just in case the player didn't do anything in the activity
+		WeaponInformation: []types.CharacterWeaponInformation{}, // empty just in case the player didn't do anything in the activity
 	}
 
-	class := model.CharacterClass(entry.Player.CharacterClass)
+	class := types.CharacterClass(entry.Player.CharacterClass)
 
 	characterId, err := strconv.ParseInt(entry.CharacterId, 10, 64)
 	if err != nil {
@@ -220,7 +221,7 @@ func createPlayerCharacter(entry *dto.PostGameCarnageReportEntry) (*model.Player
 	// Set weapon information
 	if entry.Extended != nil {
 		for _, weapon := range entry.Extended.Weapons {
-			w := model.CharacterWeaponInformation{
+			w := types.CharacterWeaponInformation{
 				WeaponHash:     weapon.ReferenceId,
 				Kills:          int(weapon.Values["uniqueWeaponKills"].Basic.Value),
 				PrecisionKills: int(weapon.Values["uniqueWeaponPrecisionKills"].Basic.Value),
@@ -230,7 +231,7 @@ func createPlayerCharacter(entry *dto.PostGameCarnageReportEntry) (*model.Player
 		}
 
 		// Set ability information
-		abilityInfo := model.CharacterAbilityInformation{
+		abilityInfo := types.CharacterAbilityInformation{
 			GrenadeKills: int(entry.Extended.Abilities["weaponKillsGrenade"].Basic.Value),
 			MeleeKills:   int(entry.Extended.Abilities["weaponKillsMelee"].Basic.Value),
 			SuperKills:   int(entry.Extended.Abilities["weaponKillsSuper"].Basic.Value),
@@ -240,8 +241,8 @@ func createPlayerCharacter(entry *dto.PostGameCarnageReportEntry) (*model.Player
 	return &characterInfo, nil
 }
 
-func GroupCharacters(entries []dto.PostGameCarnageReportEntry) (map[int64][]dto.PostGameCarnageReportEntry, error) {
-	var playersGrouped = make(map[int64][]dto.PostGameCarnageReportEntry)
+func GroupCharacters(entries []types.PostGameCarnageReportEntry) (map[int64][]types.PostGameCarnageReportEntry, error) {
+	var playersGrouped = make(map[int64][]types.PostGameCarnageReportEntry)
 	for _, entry := range entries {
 		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
@@ -252,14 +253,14 @@ func GroupCharacters(entries []dto.PostGameCarnageReportEntry) (map[int64][]dto.
 		if ok {
 			playersGrouped[membershipId] = append(val, entry)
 		} else {
-			playersGrouped[membershipId] = []dto.PostGameCarnageReportEntry{entry}
+			playersGrouped[membershipId] = []types.PostGameCarnageReportEntry{entry}
 		}
 	}
 	return playersGrouped, nil
 }
 
 // Resolves if a raid was fresh or not, courtesy of @Newo
-func resolveFromBeginning(pgcr *dto.PostGameCarnageReport, flawless bool) (*bool, error) {
+func resolveFromBeginning(pgcr *types.PostGameCarnageReport, flawless bool) (*bool, error) {
 	var result *bool = new(bool)
 
 	startTime, err := time.Parse(time.RFC3339, pgcr.Period)

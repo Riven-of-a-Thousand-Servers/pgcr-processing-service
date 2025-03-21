@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS weapon
 CREATE UNIQUE INDEX weapon_name_idx ON weapon (weapon_name);
 CREATE UNIQUE INDEX weapon_equipment_slot_idx ON weapon (weapon_equipment_slot);
 
-CREATE TABLE IF NOT EXISTS player_raid_activity_weapon_stats
+CREATE TABLE IF NOT EXISTS instance_activity_weapon_stats
 (
     instance_id           BIGINT,
     player_character_id   BIGINT,
@@ -159,10 +159,9 @@ CREATE TABLE IF NOT EXISTS player_raid_activity_weapon_stats
     total_kills           INTEGER,
     total_precision_kills INTEGER,
     precision_ratio       FLOAT,
-    CONSTRAINT player_raid_activity_weapon_stats_pk PRIMARY KEY (instance_id, player_character_id, weapon_id),
+    CONSTRAINT instance_activity_weapon_stats_pk PRIMARY KEY (instance_id, player_character_id, weapon_id),
     CONSTRAINT instance_id_fk FOREIGN KEY (instance_id) REFERENCES raid_pgcr (instance_id),
     CONSTRAINT player_character_id_fk FOREIGN KEY (player_character_id) REFERENCES player_character (character_id),
     CONSTRAINT weapon_id_fk FOREIGN KEY (weapon_id) REFERENCES weapon (weapon_hash)
 );
-
-CREATE UNIQUE INDEX player_raid_activity_weapon_stats_total_kills_idx ON player_raid_activity_weapon_stats (total_kills);
+CREATE UNIQUE INDEX instance_activity_weapon_stats_total_kills_idx ON instance_activity_weapon_stats (total_kills);

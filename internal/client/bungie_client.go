@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"rivenbot/internal/dto"
+
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 )
 
 type BungieClient interface {
-	FetchPGCR(instanceId int64, apiKey string) (*dto.PostGameCarnageReportResponse, error)
+	FetchPGCR(instanceId int64, apiKey string) (*types.PostGameCarnageReportResponse, error)
 }
 
 type BungieHttpClient struct {
@@ -22,7 +23,7 @@ var (
 )
 
 // Fetches a PGCR from stats.bungie.net
-func (b *BungieHttpClient) FetchPGCR(instanceId int64, apiKey string) (*dto.PostGameCarnageReportResponse, error) {
+func (b *BungieHttpClient) FetchPGCR(instanceId int64, apiKey string) (*types.PostGameCarnageReportResponse, error) {
 	log.Printf("Fetching pgcr with instanceId [%d] from Bungie\n", instanceId)
 	url := fmt.Sprintf("%s%s/%d/", baseUrl, pgcrPath, instanceId)
 	request, err := http.NewRequest("GET", url, nil)
@@ -38,7 +39,7 @@ func (b *BungieHttpClient) FetchPGCR(instanceId int64, apiKey string) (*dto.Post
 
 	defer resp.Body.Close()
 
-	var pgcr dto.PostGameCarnageReportResponse
+	var pgcr types.PostGameCarnageReportResponse
 	decoder := json.NewDecoder(resp.Body)
 
 	if err := decoder.Decode(&pgcr); err != nil {

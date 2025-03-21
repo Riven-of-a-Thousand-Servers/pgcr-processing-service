@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 
+	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	"github.com/redis/go-redis/v9"
-	"rivenbot/internal/dto"
 )
 
 type RedisClient interface {
-	GetManifestEntity(ctx context.Context, hash string) (*dto.ManifestObject, error)
+	GetManifestEntity(ctx context.Context, hash string) (*types.ManifestObject, error)
 }
 
 type RedisService struct {
@@ -21,13 +21,13 @@ func NewRedisService(client *redis.Client) *RedisService {
 }
 
 // Returns a given manifest entity based on a hash
-func (r *RedisService) GetManifestEntity(ctx context.Context, hash string) (*dto.ManifestObject, error) {
+func (r *RedisService) GetManifestEntity(ctx context.Context, hash string) (*types.ManifestObject, error) {
 	result, err := r.Client.Get(ctx, hash).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var response *dto.ManifestObject
+	var response *types.ManifestObject
 	if err := json.Unmarshal([]byte(result), response); err != nil {
 		return nil, err
 	}

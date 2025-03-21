@@ -5,18 +5,19 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"rivenbot/internal/model"
 )
 
 func TestAddWeapon_Success(t *testing.T) {
-	// given: a weapon model
+	// given: a weapon types
 	weapon := model.WeaponEntity{
 		WeaponHash:          3211806999,
 		WeaponIcon:          "/some/route/here/",
 		WeaponName:          "Izanagi's Burden",
-		WeaponDamageType:    model.KINETIC,
-		WeaponEquipmentSlot: model.PRIMARY,
+		WeaponDamageType:    types.KINETIC,
+		WeaponEquipmentSlot: types.PRIMARY,
 	}
 
 	db, mock, err := sqlmock.New()
@@ -62,13 +63,13 @@ func TestAddWeapon_Success(t *testing.T) {
 }
 
 func TestAddWeapon_ErrorOnWeaponInsert(t *testing.T) {
-	// given: a weapon model
+	// given: a weapon types
 	weapon := model.WeaponEntity{
 		WeaponHash:          3211806999,
 		WeaponIcon:          "/some/route/here/",
 		WeaponName:          "Izanagi's Burden",
-		WeaponDamageType:    model.KINETIC,
-		WeaponEquipmentSlot: model.PRIMARY,
+		WeaponDamageType:    types.KINETIC,
+		WeaponEquipmentSlot: types.PRIMARY,
 	}
 
 	db, mock, err := sqlmock.New()

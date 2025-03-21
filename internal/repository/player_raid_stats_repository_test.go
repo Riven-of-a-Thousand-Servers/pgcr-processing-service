@@ -7,13 +7,15 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 )
 
 func TestAddPlayerRaidStats_Success(t *testing.T) {
 	// given: a player raid stats entity
 	playerStats := model.PlayerRaidStatsEntity{
-		RaidName:           model.LAST_WISH,
-		RaidDifficulty:     model.NORMAL,
+		RaidName:           types.LAST_WISH,
+		RaidDifficulty:     types.NORMAL,
 		PlayerMembershipId: 4611686018440744095,
 		Kills:              1223,
 		Deaths:             27,
@@ -92,8 +94,8 @@ func TestAddPlayerRaidStats_Success(t *testing.T) {
 func TestAddPlayerRaidStats_ErrorOnPlayerRaidStatsInsert(t *testing.T) {
 	// given: a player stats entity to insert
 	playerStats := model.PlayerRaidStatsEntity{
-		RaidName:           model.LAST_WISH,
-		RaidDifficulty:     model.NORMAL,
+		RaidName:           types.LAST_WISH,
+		RaidDifficulty:     types.NORMAL,
 		PlayerMembershipId: 4611686018440744095,
 		Kills:              1223,
 		Deaths:             27,

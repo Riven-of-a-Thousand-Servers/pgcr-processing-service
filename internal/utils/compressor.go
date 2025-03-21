@@ -5,14 +5,14 @@ import (
 	"compress/gzip"
 	"encoding/json"
 
-	"rivenbot/internal/dto"
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 )
 
 type PGCRCompressor interface {
-	Compress(raw *dto.PostGameCarnageReport) ([]byte, error)
+	Compress(raw *types.PostGameCarnageReport) ([]byte, error)
 }
 
-func Compress(raw *dto.PostGameCarnageReport) ([]byte, error) {
+func Compress(raw *types.PostGameCarnageReport) ([]byte, error) {
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
 		return nil, err
