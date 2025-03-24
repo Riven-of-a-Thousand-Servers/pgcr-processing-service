@@ -267,7 +267,7 @@ func TestPgcrFreshness(t *testing.T) {
 
 // Utility to retrieve a pgcr json as test data
 func getPgcr(file string) (*types.PostGameCarnageReport, error) {
-	bytes, err := os.ReadFile("../testdata/" + file)
+	bytes, err := os.ReadFile("./testdata/" + file)
 	if err != nil {
 		return nil, err
 	}

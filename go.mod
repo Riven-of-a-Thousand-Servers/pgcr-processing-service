@@ -9,7 +9,6 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/time v0.8.0
 )
 
 require (
