@@ -61,6 +61,6 @@ func main() {
 			Mapper:     mapper,
 			Repository: repository,
 		}
-		go worker.work(*latestInstanceId, apiKey, c)
+		go worker.Work(*latestInstanceId, apiKey, c)
 	}
 }
