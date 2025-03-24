@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 	"testing"
 )
 

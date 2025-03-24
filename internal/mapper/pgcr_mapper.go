@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"rivenbot/internal/client"
-	"rivenbot/internal/utils"
+	"pgcr-processing-service/internal/client"
+	"pgcr-processing-service/internal/utils"
 
 	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"

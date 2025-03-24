@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 )
 
 type RaidRepository struct {

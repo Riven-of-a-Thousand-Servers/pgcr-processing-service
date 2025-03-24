@@ -1,4 +1,4 @@
-module rivenbot
+module pgcr-processing-service
 
 go 1.23.2
 

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 )
 
 type WeaponRepository struct {

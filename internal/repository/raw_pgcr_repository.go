@@ -3,7 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 )
 
 type RawPgcrRepository struct {

@@ -2,9 +2,9 @@ package crawler
 
 import (
 	"log"
-	"rivenbot/internal/client"
-	"rivenbot/internal/mapper"
-	"rivenbot/internal/repository"
+	"pgcr-processing-service/internal/client"
+	"pgcr-processing-service/internal/mapper"
+	"pgcr-processing-service/internal/repository"
 )
 
 type PgcrWebWorker struct {

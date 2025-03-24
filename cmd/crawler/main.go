@@ -5,11 +5,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"rivenbot/internal/client"
-	"rivenbot/internal/mapper"
-	"rivenbot/internal/repository"
-	"rivenbot/postgres"
-	"rivenbot/redis"
+	"pgcr-processing-service/internal/client"
+	"pgcr-processing-service/internal/mapper"
+	"pgcr-processing-service/internal/repository"
+	"pgcr-processing-service/postgres"
+	"pgcr-processing-service/redis"
 
 	"github.com/joho/godotenv"
 )

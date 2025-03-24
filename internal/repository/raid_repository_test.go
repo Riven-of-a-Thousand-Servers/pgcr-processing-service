@@ -2,7 +2,7 @@ package repository
 
 import (
 	"fmt"
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 	"testing"
 	"time"
 

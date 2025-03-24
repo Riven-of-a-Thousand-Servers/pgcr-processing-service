@@ -7,7 +7,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	"github.com/stretchr/testify/assert"
-	"rivenbot/internal/model"
+	"pgcr-processing-service/internal/model"
 )
 
 func TestAddWeapon_Success(t *testing.T) {
