@@ -6,11 +6,15 @@ import (
 	"pgcr-processing-service/internal/model"
 )
 
-type PlayerRepository struct {
+type PlayerRepository interface {
+	AddPlayer(tx *sql.Tx, entity model.PlayerEntity) (*model.PlayerEntity, error)
+}
+
+type PlayerRepositoryImpl struct {
 	Conn *sql.DB
 }
 
-func (r *PlayerRepository) AddPlayer(tx *sql.Tx, entity model.PlayerEntity) (*model.PlayerEntity, error) {
+func (r *PlayerRepositoryImpl) AddPlayer(tx *sql.Tx, entity model.PlayerEntity) (*model.PlayerEntity, error) {
 	_, err := tx.Exec(`
     INSERT INTO player (membership_id, membership_type, global_display_name, global_display_name_code, display_name, last_seen)
     VALUES ($1, $2, $3, $4, $5, $6) 

@@ -1,14 +1,14 @@
-package client
+package redis
 
 import (
 	"context"
 	"encoding/json"
 
-	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	"github.com/redis/go-redis/v9"
 )
 
-type RedisClient interface {
+type ManifestClient interface {
 	GetManifestEntity(ctx context.Context, hash string) (*types.ManifestObject, error)
 }
 
@@ -16,8 +16,14 @@ type RedisService struct {
 	Client *redis.Client
 }
 
-func NewRedisService(client *redis.Client) *RedisService {
-	return &RedisService{Client: client}
+func NewRedisService(url string) *RedisService {
+	redis := redis.NewClient(&redis.Options{
+		Addr:     url,
+		Password: "",
+		DB:       0,
+		Protocol: 2,
+	})
+	return &RedisService{Client: redis}
 }
 
 // Returns a given manifest entity based on a hash

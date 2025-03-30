@@ -43,7 +43,7 @@ func TestAddPlayer_Success(t *testing.T) {
 
 	defer db.Close()
 
-	repository := PlayerRepository{
+	repository := PlayerRepositoryImpl{
 		Conn: db,
 	}
 
@@ -109,7 +109,7 @@ func TestAddPlayer_SuccessOnNoCharactersInserted(t *testing.T) {
 
 	defer db.Close()
 
-	repository := PlayerRepository{
+	repository := PlayerRepositoryImpl{
 		Conn: db,
 	}
 
@@ -181,7 +181,7 @@ func TestAddPlayer_ErrorOnPlayerInsert(t *testing.T) {
 
 	defer db.Close()
 
-	repository := PlayerRepository{
+	repository := PlayerRepositoryImpl{
 		Conn: db,
 	}
 
@@ -235,7 +235,7 @@ func TestAddPlayer_ErrorOnPlayerCharacterInsert(t *testing.T) {
 
 	defer db.Close()
 
-	repository := PlayerRepository{
+	repository := PlayerRepositoryImpl{
 		Conn: db,
 	}
 

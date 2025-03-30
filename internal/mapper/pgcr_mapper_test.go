@@ -10,18 +10,18 @@ import (
 	"testing"
 	"time"
 
-	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
-	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-type MockRedisService struct {
+type MockManifestClient struct {
 	mock.Mock
 }
 
-func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*types.ManifestObject, error) {
+func (m *MockManifestClient) GetManifestEntity(ctx context.Context, key string) (*types.ManifestObject, error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(*types.ManifestObject), args.Error(1)
 }
@@ -175,14 +175,14 @@ func TestPgcrMapping(t *testing.T) {
 				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
 			}
 
-			mockedRedis := new(MockRedisService)
+			mockedRedis := new(MockManifestClient)
 
 			// Mock manifest calls
 			activityId := pgcr.ActivityDetails.ActivityHash
 			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(params.response, nil)
 
 			processor := PgcrMapper{
-				RedisClient: mockedRedis,
+				ManifestClient: mockedRedis,
 			}
 
 			_, processed, err := processor.Map(pgcr)
@@ -241,7 +241,7 @@ func TestPgcrFreshness(t *testing.T) {
 				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
 			}
 
-			mockedRedis := new(MockRedisService)
+			mockedRedis := new(MockManifestClient)
 
 			// Mock manifest calls
 			activityId := pgcr.ActivityDetails.ActivityHash
@@ -253,7 +253,7 @@ func TestPgcrFreshness(t *testing.T) {
 			mockedRedis.On("GetManifestEntity", mock.Anything, strconv.Itoa(int(activityId))).Return(response, nil)
 
 			processor := PgcrMapper{
-				RedisClient: mockedRedis,
+				ManifestClient: mockedRedis,
 			}
 
 			_, processed, err := processor.Map(pgcr)
@@ -293,7 +293,7 @@ func assertPgcrFields(processed types.ProcessedPostGameCarnageReport, pgcr types
 		assert.Error(err, "Error converting instance ID from string to int64")
 	}
 	endTime := startTime.Add(time.Second * time.Duration(int32(pgcr.Entries[0].Values["activityDurationSeconds"].Basic.Value)))
-	raidName, raidDifficulty, err := enums.GetRaidAndDifficulty(manifestObject.DisplayProperties.Name)
+	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(manifestObject.DisplayProperties.Name)
 	if err != nil {
 		assert.Errorf(err, "Something bad happened when parsing the manifest activity hash")
 	}
