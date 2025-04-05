@@ -25,7 +25,7 @@ func TestAddRaid_Success(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
-	raidRepository := RaidRepository{
+	raidRepository := RaidRepositoryImpl{
 		Conn: db,
 	}
 
@@ -78,7 +78,7 @@ func TestAddRaidInfo_SuccessNoRaidHashAdded(t *testing.T) {
 
 	defer db.Close()
 
-	raidRepository := RaidRepository{
+	raidRepository := RaidRepositoryImpl{
 		Conn: db,
 	}
 
@@ -125,7 +125,7 @@ func TestAddRaidInfo_ErrorOnRaidInsert(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
-	raidRepository := RaidRepository{
+	raidRepository := RaidRepositoryImpl{
 		Conn: db,
 	}
 
@@ -170,7 +170,7 @@ func TestAddRaidInfo_ErrorOnRaidHashInsert(t *testing.T) {
 
 	defer db.Close()
 
-	raidRepository := RaidRepository{
+	raidRepository := RaidRepositoryImpl{
 		Conn: db,
 	}
 

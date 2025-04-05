@@ -7,11 +7,15 @@ import (
 	"pgcr-processing-service/internal/model"
 )
 
-type RaidRepository struct {
+type RaidRepositoryImpl struct {
 	Conn *sql.DB
 }
 
-func (r *RaidRepository) AddRaidInfo(tx *sql.Tx, entity model.RaidEntity) (*model.RaidEntity, error) {
+type RaidRepository interface {
+	AddRaidInfo(tx *sql.Tx, entity model.RaidEntity) (*model.RaidEntity, error)
+}
+
+func (r *RaidRepositoryImpl) AddRaidInfo(tx *sql.Tx, entity model.RaidEntity) (*model.RaidEntity, error) {
 	_, err := tx.Exec(`
     INSERT INTO raid (raid_name, raid_difficulty, is_active, release_date)
     VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
