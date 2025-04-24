@@ -6,11 +6,15 @@ import (
 	"pgcr-processing-service/internal/model"
 )
 
-type InstanceActivityRepository struct {
+type InstanceActivityRepository interface {
+	AddInstanceActivity(tx *sql.Tx, entity model.InstanceActivityEntity) (*model.InstanceActivityEntity, error)
+}
+
+type InstanceActivityRepositoryImpl struct {
 	Conn *sql.DB
 }
 
-func (r *InstanceActivityRepository) AddInstanceActivity(tx *sql.Tx, entity model.InstanceActivityEntity) (*model.InstanceActivityEntity, error) {
+func (r *InstanceActivityRepositoryImpl) AddInstanceActivity(tx *sql.Tx, entity model.InstanceActivityEntity) (*model.InstanceActivityEntity, error) {
 	_, err := tx.Exec(`
     INSERT INTO instance_activity_stats
     (
@@ -24,15 +28,14 @@ func (r *InstanceActivityRepository) AddInstanceActivity(tx *sql.Tx, entity mode
       assists, 
       kills_deaths_assists, 
       kills_deaths_ratio, 
-      efficiency, 
       duration_seconds, 
       time_played_seconds
     )
     VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13   
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
     )`, entity.InstanceId, entity.PlayerMembershipId, entity.PlayerCharacterId,
 		entity.CharacterEmblem, entity.IsCompleted, entity.Kills, entity.Deaths, entity.Assists,
-		entity.KillsDeathsAssists, entity.KillsDeathsRatio, entity.Efficiency,
+		entity.KillsDeathsAssists, entity.KillsDeathsRatio,
 		entity.DurationSeconds, entity.TimeplayedSeconds)
 
 	if err != nil {

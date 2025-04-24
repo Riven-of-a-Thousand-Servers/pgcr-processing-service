@@ -6,11 +6,15 @@ import (
 	"pgcr-processing-service/internal/model"
 )
 
-type InstanceActivityWeaponStatsRepository struct {
+type InstanceActivityWeaponStatsRepositoryImpl struct {
 	Conn *sql.DB
 }
 
-func (iawsr *InstanceActivityWeaponStatsRepository) AddInstanceWeaponStats(tx *sql.Tx, entity model.InstanceWeaponStats) (*model.InstanceWeaponStats, error) {
+type InstanceActivityWeaponStatsRepository interface {
+	AddInstanceWeaponStats(tx *sql.Tx, entity model.InstanceWeaponStats) (*model.InstanceWeaponStats, error)
+}
+
+func (iawsr *InstanceActivityWeaponStatsRepositoryImpl) AddInstanceWeaponStats(tx *sql.Tx, entity model.InstanceWeaponStats) (*model.InstanceWeaponStats, error) {
 	_, err := tx.Exec(`
 		INSERT INTO instance_activity_weapon_stats 
 		(instance_id, player_character_id, weapon_id, total_kills, total_precision_kills, precision_rates)

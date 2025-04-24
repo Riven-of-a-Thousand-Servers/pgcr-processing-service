@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"pgcr-processing-service/internal/redis"
+	"pgcr-processing-service/internal/service"
 	"pgcr-processing-service/internal/utils"
 
 	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
@@ -15,7 +15,7 @@ import (
 )
 
 type PgcrMapper struct {
-	ManifestClient redis.ManifestClient
+	ManifestClient service.ManifestClient
 }
 
 const (
@@ -42,7 +42,7 @@ var leviHashes = map[int64]bool{
 
 // This method maps the PGCR into a pre-processed format thats more suitable for features
 // Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
-func (p *PgcrMapper) Map(pgcr *types.PostGameCarnageReport) ([]byte, *types.ProcessedPostGameCarnageReport, error) {
+func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte, *types.ProcessedPostGameCarnageReport, error) {
 	processedPgcr, err := processPgcr(pgcr, p.ManifestClient)
 	if err != nil {
 		log.Fatal(err)
@@ -57,7 +57,7 @@ func (p *PgcrMapper) Map(pgcr *types.PostGameCarnageReport) ([]byte, *types.Proc
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(pgcr *types.PostGameCarnageReport, redisClient redis.ManifestClient) (*types.ProcessedPostGameCarnageReport, error) {
+func processPgcr(pgcr *types.PostGameCarnageReport, redisClient service.ManifestClient) (*types.ProcessedPostGameCarnageReport, error) {
 	var entity types.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time

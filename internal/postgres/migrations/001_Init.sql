@@ -1,47 +1,46 @@
 CREATE TYPE RAID_NAME as ENUM (
-    'SALVATIONS_EDGE',
-    'CROTAS_END',
-    'ROOT_OF_NIGHTMARES',
-    'KINGS_FALL',
-    'VOW_OF_THE_DISCIPLE',
-    'VAULT_OF_GLASS',
-    'DEEP_STONE_CRYPT',
-    'GARDEN_OF_SALVATION',
-    'LEVIATHAN_CROWN_OF_SORROW',
-    'LAST_WISH',
-    'LEVIATHAN_SPIRE_OF_STARS',
-    'LEVIATHAN_EATER_OF_WORLDS',
-    'LEVIATHAN',
-    'SCOURGE_OF_THE_PAST');
+    'Salvation''s Edge',
+    'Crota''s End',
+    'Root of Nightmares',
+    'King''s Fall',
+    'Vow of the Disciple',
+    'Vault of Glass',
+    'Deep Stone Crypt',
+    'Garden of Salvation',
+    'Crown of Sorrow',
+    'Last Wish',
+    'Leviathan, Spire of Stars',
+    'Leviathan, Eater of Worlds',
+    'Leviathan',
+    'Scourge of the Past');
 
 CREATE TYPE RAID_DIFFICULTY as ENUM (
-    'NORMAL',
-    'MASTER',
-    'PRESTIGE',
-    'GUIDED_GAMES',
-    'CHALLENGE_MODE'
+    'Normal',
+    'Master',
+    'Prestige',
+    'Guided Games',
+    'Challenge Mode'
     );
 
 CREATE TYPE CHARACTER_CLASS as ENUM (
-    'TITAN',
-    'WARLOCK',
-    'HUNTER',
-    'EMPTY'
+    'Titan',
+    'Warlock',
+    'Hunter'
     );
 
 CREATE TYPE DAMAGE_TYPE as ENUM (
-    'KINETIC',
-    'ARC',
-    'VOID',
-    'SOLAR',
-    'STASIS',
-    'STRAND'
+    'Kinetic',
+    'Arc',
+    'Void',
+    'Solar',
+    'Stasis',
+    'Strand'
     );
 
 CREATE TYPE EQUIPMENT_SLOT as ENUM (
-    'PRIMARY',
-    'SPECIAL',
-    'HEAVY'
+    'Primary',
+    'Special',
+    'Heavy'
     );
 
 CREATE TABlE raid_pgcr

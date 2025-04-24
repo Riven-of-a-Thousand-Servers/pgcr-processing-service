@@ -185,7 +185,7 @@ func TestPgcrMapping(t *testing.T) {
 				ManifestClient: mockedRedis,
 			}
 
-			_, processed, err := processor.Map(pgcr)
+			_, processed, err := processor.ToProcessedPgcr(pgcr)
 
 			assert := assert.New(t)
 			slices.SortFunc(processed.PlayerInformation, func(a, b types.PlayerData) int {
@@ -256,7 +256,7 @@ func TestPgcrFreshness(t *testing.T) {
 				ManifestClient: mockedRedis,
 			}
 
-			_, processed, err := processor.Map(pgcr)
+			_, processed, err := processor.ToProcessedPgcr(pgcr)
 
 			assert := assert.New(t)
 

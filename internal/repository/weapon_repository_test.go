@@ -33,7 +33,7 @@ func TestAddWeapon_Success(t *testing.T) {
 		t.Fatalf("Error beginning transaction: %v", err)
 	}
 
-	weaponRepository := WeaponRepository{
+	weaponRepository := WeaponRepositoryImpl{
 		Conn: db,
 	}
 
@@ -85,7 +85,7 @@ func TestAddWeapon_ErrorOnWeaponInsert(t *testing.T) {
 		t.Fatalf("Error beginning transaction: %v", err)
 	}
 
-	weaponRepository := WeaponRepository{
+	weaponRepository := WeaponRepositoryImpl{
 		Conn: db,
 	}
 

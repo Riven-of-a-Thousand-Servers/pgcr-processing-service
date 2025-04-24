@@ -25,7 +25,7 @@ func TestAddInstanceWeaponStats_Success(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
-	repository := InstanceActivityWeaponStatsRepository{
+	repository := InstanceActivityWeaponStatsRepositoryImpl{
 		Conn: db,
 	}
 
@@ -78,7 +78,7 @@ func TestAddInstanceWeaponStats_ErrorOnInsert(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
-	repository := InstanceActivityWeaponStatsRepository{
+	repository := InstanceActivityWeaponStatsRepositoryImpl{
 		Conn: db,
 	}
 

@@ -7,11 +7,15 @@ import (
 	"pgcr-processing-service/internal/model"
 )
 
-type WeaponRepository struct {
+type WeaponRepositoryImpl struct {
 	Conn *sql.DB
 }
 
-func (r *WeaponRepository) AddWeapon(tx *sql.Tx, entity model.WeaponEntity) (*model.WeaponEntity, error) {
+type WeaponRepository interface {
+	AddWeapon(tx *sql.Tx, entity model.WeaponEntity) (*model.WeaponEntity, error)
+}
+
+func (r *WeaponRepositoryImpl) AddWeapon(tx *sql.Tx, entity model.WeaponEntity) (*model.WeaponEntity, error) {
 	_, err := tx.Exec(`
     INSERT INTO weapon (weapon_hash, weapon_icon, weapon_name, weapon_damage_type, weapon_equipment_slot)
     VALUES ($1, $2, $3, $4, $5)`,

@@ -14,7 +14,6 @@ type InstanceActivityEntity struct {
 	GrenadeKills       int
 	KillsDeathsAssists float32
 	KillsDeathsRatio   float32
-	Efficiency         float32
-	DurationSeconds    int32
-	TimeplayedSeconds  int32
+	DurationSeconds    int64
+	TimeplayedSeconds  int64
 }

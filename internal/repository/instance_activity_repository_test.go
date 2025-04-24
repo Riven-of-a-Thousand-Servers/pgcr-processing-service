@@ -22,7 +22,6 @@ func TestAddInstanceActivity_Success(t *testing.T) {
 		Assists:            31,
 		KillsDeathsAssists: 18.38,
 		KillsDeathsRatio:   14.50,
-		Efficiency:         22.25,
 		DurationSeconds:    15987,
 		TimeplayedSeconds:  1333,
 	}
@@ -32,7 +31,7 @@ func TestAddInstanceActivity_Success(t *testing.T) {
 		t.Fatalf("Error establishing stub connection to database")
 	}
 
-	repository := InstanceActivityRepository{
+	repository := InstanceActivityRepositoryImpl{
 		Conn: db,
 	}
 
@@ -47,7 +46,7 @@ func TestAddInstanceActivity_Success(t *testing.T) {
 	mock.ExpectExec("INSERT INTO instance_activity_stats").
 		WithArgs(entity.InstanceId, entity.PlayerMembershipId, entity.PlayerCharacterId,
 			entity.CharacterEmblem, entity.IsCompleted, entity.Kills, entity.Deaths, entity.Assists,
-			entity.KillsDeathsAssists, entity.KillsDeathsRatio, entity.Efficiency,
+			entity.KillsDeathsAssists, entity.KillsDeathsRatio,
 			entity.DurationSeconds, entity.TimeplayedSeconds).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
@@ -70,7 +69,6 @@ func TestAddInstanceActivity_Success(t *testing.T) {
 	assert.Equal(entity.Assists, result.Assists, "Assists should be the same")
 	assert.Equal(entity.KillsDeathsAssists, result.KillsDeathsAssists, "KDAs should be the same")
 	assert.Equal(entity.KillsDeathsRatio, result.KillsDeathsRatio, "KDRs should be the same")
-	assert.Equal(entity.Efficiency, result.Efficiency, "Efficiencies should be the same")
 	assert.Equal(entity.DurationSeconds, result.DurationSeconds, "Durations should be the same")
 	assert.Equal(entity.TimeplayedSeconds, result.TimeplayedSeconds, "Time played should be the same")
 
@@ -93,7 +91,6 @@ func TestAddInstanceActivity_ErrorOnActivityInstanceInsert(t *testing.T) {
 		Assists:            31,
 		KillsDeathsAssists: 18.38,
 		KillsDeathsRatio:   14.50,
-		Efficiency:         22.25,
 		DurationSeconds:    15987,
 		TimeplayedSeconds:  1333,
 	}
@@ -113,11 +110,11 @@ func TestAddInstanceActivity_ErrorOnActivityInstanceInsert(t *testing.T) {
 	mock.ExpectExec("INSERT INTO instance_activity_stats").
 		WithArgs(entity.InstanceId, entity.PlayerMembershipId, entity.PlayerCharacterId,
 			entity.CharacterEmblem, entity.IsCompleted, entity.Kills, entity.Deaths, entity.Assists,
-			entity.KillsDeathsAssists, entity.KillsDeathsRatio, entity.Efficiency,
+			entity.KillsDeathsAssists, entity.KillsDeathsRatio,
 			entity.DurationSeconds, entity.TimeplayedSeconds).
 		WillReturnError(fmt.Errorf("Something happened while inserting into table"))
 
-	repository := InstanceActivityRepository{
+	repository := InstanceActivityRepositoryImpl{
 		Conn: db,
 	}
 
