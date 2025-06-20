@@ -140,6 +140,8 @@ func mapOverallStats(ppgcr *types.ProcessedPostGameCarnageReport) []model.Player
 				Solo:               ppgcr.Solo,
 				Duo:                ppgcr.Duo,
 				Trio:               ppgcr.Trio,
+				SoloFlawless:       ppgcr.Solo && ppgcr.Flawless,
+				TrioFlawless:       ppgcr.Trio && ppgcr.Flawless,
 			}
 
 			clear := 0
