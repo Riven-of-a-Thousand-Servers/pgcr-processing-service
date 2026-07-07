@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"pgcr-processing-service/internal/model"
+	"pgcr-processing-service/internal/redis"
 	"pgcr-processing-service/internal/repository"
 	"strconv"
 	"time"
@@ -19,7 +20,7 @@ type PgcrService interface {
 
 type PgcrServiceImpl struct {
 	Conn                          *sql.DB
-	Redis                         ManifestClient
+	Redis                         redis.Service
 	RawPgcrRepository             repository.RawPgcrRepository
 	PlayerRepository              repository.PlayerRepository
 	RaidRepository                repository.RaidRepository

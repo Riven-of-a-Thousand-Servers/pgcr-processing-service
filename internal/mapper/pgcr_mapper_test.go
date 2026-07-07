@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type MockManifestClient struct {
+type MockRedisService struct {
 	mock.Mock
 }
 
-func (m *MockManifestClient) GetManifestEntity(ctx context.Context, key string) (*types.ManifestObject, error) {
+func (m *MockRedisService) GetManifestEntity(ctx context.Context, key string) (*types.ManifestObject, error) {
 	args := m.Called(ctx, key)
 	return args.Get(0).(*types.ManifestObject), args.Error(1)
 }
@@ -175,7 +175,7 @@ func TestPgcrMapping(t *testing.T) {
 				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
 			}
 
-			mockedRedis := new(MockManifestClient)
+			mockedRedis := new(MockRedisService)
 
 			// Mock manifest calls
 			activityId := pgcr.ActivityDetails.ActivityHash
@@ -241,7 +241,7 @@ func TestPgcrFreshness(t *testing.T) {
 				t.Errorf("Failed to get file [%s]. %v", params.inputFile, err)
 			}
 
-			mockedRedis := new(MockManifestClient)
+			mockedRedis := new(MockRedisService)
 
 			// Mock manifest calls
 			activityId := pgcr.ActivityDetails.ActivityHash

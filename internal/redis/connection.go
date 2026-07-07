@@ -8,7 +8,7 @@ import (
 )
 
 // Create a Redis client with the specified details
-func CreateClient() (*redis.Client, error) {
+func Connect() (*redis.Client, error) {
 	if err := godotenv.Load(); err != nil {
 		return nil, err
 	}

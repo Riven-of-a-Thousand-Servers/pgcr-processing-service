@@ -1,4 +1,4 @@
-package utils
+package compress
 
 import (
 	"bytes"
@@ -111,7 +111,7 @@ func TestPgcrCompression(t *testing.T) {
 	}
 
 	// when: Compress is called
-	compressedBytes, err := Compress(&pgcr)
+	compressedBytes, err := Gzip(&pgcr)
 
 	// then: The underlying bytes should decompress to the procesed PGCR
 	if err == nil {

@@ -1,4 +1,4 @@
-package utils
+package compress
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ type PGCRCompressor interface {
 	Compress(raw *types.PostGameCarnageReport) ([]byte, error)
 }
 
-func Compress(raw *types.PostGameCarnageReport) ([]byte, error) {
+func Gzip(raw *types.PostGameCarnageReport) ([]byte, error) {
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
 		return nil, err

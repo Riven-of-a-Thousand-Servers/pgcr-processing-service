@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"time"
 
-	"pgcr-processing-service/internal/service"
-	"pgcr-processing-service/internal/utils"
+	"pgcr-processing-service/internal/compress"
+	"pgcr-processing-service/internal/redis"
 
 	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
 	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 )
 
 type PgcrMapper struct {
-	ManifestClient service.ManifestClient
+	ManifestClient redis.Service
 }
 
 const (
@@ -49,7 +49,7 @@ func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte,
 		return nil, nil, err
 	}
 
-	compressed, err := utils.Compress(pgcr)
+	compressed, err := compress.Gzip(pgcr)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -57,7 +57,7 @@ func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte,
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(pgcr *types.PostGameCarnageReport, redisClient service.ManifestClient) (*types.ProcessedPostGameCarnageReport, error) {
+func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) (*types.ProcessedPostGameCarnageReport, error) {
 	var entity types.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time
@@ -88,7 +88,7 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisClient service.Manifest
 	entity.ActivityHash = pgcr.ActivityDetails.ActivityHash
 
 	activitiyHash := pgcr.ActivityDetails.ActivityHash
-	maniestResponse, err := redisClient.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
+	maniestResponse, err := redisService.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
 	if err != nil {
 		log.Panicf("Unable to find activity hash [%d] in Redis: %v", activitiyHash, err)
 		return nil, err

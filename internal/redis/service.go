@@ -1,4 +1,4 @@
-package service
+package redis
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type ManifestClient interface {
+type Service interface {
 	GetManifestEntity(ctx context.Context, hash string) (*types.ManifestObject, error)
 }
 
@@ -16,7 +16,7 @@ type RedisService struct {
 	Client *redis.Client
 }
 
-func NewRedisService(url string) *RedisService {
+func NewService(url string) *RedisService {
 	redis := redis.NewClient(&redis.Options{
 		Addr:     url,
 		Password: "",
