@@ -1,10 +1,14 @@
-package service
+package processing
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/model"
+	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/redis"
 	"pgcr-processing-service/internal/repository"
 	"strconv"
@@ -14,12 +18,14 @@ import (
 	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 )
 
-type PgcrService interface {
-	ProcessPgcr(ppgcr types.ProcessedPostGameCarnageReport) error
+type PgcrProcessor interface {
+	DoPgcr(types.ProcessedPostGameCarnageReport) error
 }
 
-type PgcrServiceImpl struct {
-	Conn                          *sql.DB
+type Processor struct {
+	Db                            *sql.DB
+	RabbitMq                      *rabbitmq.RabbitMQ
+	PgcrMapper                    mapper.PgcrMapper
 	Redis                         redis.Service
 	RawPgcrRepository             repository.RawPgcrRepository
 	PlayerRepository              repository.PlayerRepository
@@ -70,49 +76,78 @@ var raidReleaseDates = map[types.RaidName]time.Time{
 }
 
 // Saves a processed pgcr to the Postgres DB
-func (ps *PgcrServiceImpl) PersistProcessedPgcr(ppgcr types.ProcessedPostGameCarnageReport) error {
-	tx, err := ps.Conn.Begin()
+func (ps *Processor) DoPgcr(pgcr types.ProcessedPostGameCarnageReport) error {
+	tx, err := ps.Db.Begin()
 	if err != nil {
-		return fmt.Errorf("Error opening transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error opening transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
 	defer tx.Rollback()
 
-	err = ps.addPlayerInfoToTx(tx, &ppgcr)
+	err = ps.addPlayerInfoToTx(tx, &pgcr)
 	if err != nil {
-		return fmt.Errorf("Error adding players to transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error adding players to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
-	err = ps.addRaidInfoToTx(tx, &ppgcr)
+	err = ps.addRaidInfoToTx(tx, &pgcr)
 	if err != nil {
-		return fmt.Errorf("Error adding raids to transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error adding raids to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
-	err = ps.addInstanceInfoToTx(tx, &ppgcr)
+	err = ps.addInstanceInfoToTx(tx, &pgcr)
 	if err != nil {
-		return fmt.Errorf("Error adding instance activity to transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error adding instance activity to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
-	err = ps.addWeaponInfoToTx(tx, &ppgcr)
+	err = ps.addWeaponInfoToTx(tx, &pgcr)
 	if err != nil {
-		return fmt.Errorf("Error adding weapon stats to transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error adding weapon stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
-	err = ps.addOverallStatsToTx(tx, &ppgcr)
+	err = ps.addOverallStatsToTx(tx, &pgcr)
 	if err != nil {
-		return fmt.Errorf("Error adding instance stats to transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error adding instance stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return fmt.Errorf("Error commiting transaction for pgcr [%d]: %v", ppgcr.InstanceId, err)
+		return fmt.Errorf("Error commiting transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
 	}
 
 	return nil
 }
 
+func (p Processor) Consume() error {
+	deliveries, err := p.RabbitMq.Consumer("pgcr_consumer")
+	if err != nil {
+		return err
+	}
+
+	for delivery := range deliveries {
+		var pgcr types.PostGameCarnageReportResponse
+		err := json.Unmarshal(delivery.Body, &pgcr)
+		if err != nil {
+			slog.Error("Error unmarshalling body from message", "Error", err)
+			return fmt.Errorf("Error unmarshalling body from message: %v", err)
+		}
+
+		instanceId := pgcr.Response.ActivityDetails.InstanceId
+		slog.Info("Processing pgcr", "InstanceId", instanceId)
+		_, ppgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
+		if err != nil {
+			return fmt.Errorf("Error mapping pgcr [%s] to a processed pgcr: %v", instanceId, err)
+		}
+		err = p.DoPgcr(*ppgcr)
+		if err != nil {
+			return fmt.Errorf("Error processing ppgcr [%d] into database tables: %v", ppgcr.InstanceId, err)
+		}
+		slog.Info("Finished processing pgcr", "InstanceId", instanceId)
+	}
+	return nil
+}
+
 // Adds info to the transaction regarding player specific stats
-func (ps *PgcrServiceImpl) addOverallStatsToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (ps *Processor) addOverallStatsToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	entities := mapOverallStats(ppgcr)
 
 	for _, entity := range entities {
@@ -173,7 +208,7 @@ func SetLowmanFlags(entity *model.PlayerRaidStatsEntity, flawless bool, playerco
 	entity.TrioFlawless = flawless && playercount == 3 && entity.FullClears == 1
 }
 
-func (ps *PgcrServiceImpl) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (ps *Processor) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, player := range ppgcr.PlayerInformation {
 		for _, character := range player.PlayerCharacterInformation {
 			entity := MapInstanceActivityEntity(ppgcr, &player, &character)
@@ -187,7 +222,7 @@ func (ps *PgcrServiceImpl) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.Processe
 	return nil
 }
 
-func (ps *PgcrServiceImpl) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (ps *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, player := range ppgcr.PlayerInformation {
 		for _, character := range player.PlayerCharacterInformation {
 			for _, weapon := range character.WeaponInformation {
@@ -249,7 +284,7 @@ func MapInstanceActivityEntity(ppgcr *types.ProcessedPostGameCarnageReport, play
 	}
 }
 
-func (ps *PgcrServiceImpl) addPlayerInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (ps *Processor) addPlayerInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, playerInformation := range ppgcr.PlayerInformation {
 		entity := MapPlayerEntity(playerInformation)
 		_, err := ps.PlayerRepository.AddPlayer(tx, entity)
@@ -291,7 +326,7 @@ func MapPlayerEntity(playerData types.PlayerData) model.PlayerEntity {
 }
 
 // Adds raids information to the SQL transaction
-func (ps *PgcrServiceImpl) addRaidInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (ps *Processor) addRaidInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	entity := MapPgcrToRaidEntity(ppgcr)
 	_, err := ps.RaidRepository.AddRaidInfo(tx, entity)
 	if err != nil {

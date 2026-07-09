@@ -1,4 +1,4 @@
-package service
+package processing
 
 import (
 	"cmp"
@@ -25,7 +25,7 @@ func TestAddRaidsToTx_Success(t *testing.T) {
 	tx := sql.Tx{}
 
 	mockRaidRepository := new(MockRaidRepository)
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		RaidRepository: mockRaidRepository,
 	}
 
@@ -53,7 +53,7 @@ func TestAddRaidsToTx_ErrorOnRepositoryCall(t *testing.T) {
 	tx := sql.Tx{}
 
 	mockRaidRepository := new(MockRaidRepository)
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		RaidRepository: mockRaidRepository,
 	}
 
@@ -175,7 +175,7 @@ func TestAddPlayersToTx_Success(t *testing.T) {
 	mockPlayerRepository.On("AddPlayer", &tx, secondPlayer).
 		Return(&secondPlayer, nil)
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		PlayerRepository: mockPlayerRepository,
 	}
 
@@ -202,7 +202,7 @@ func TestAddPlayersToTx_ErrorWhileSavingPlayer(t *testing.T) {
 	mockPlayerRepository.On("AddPlayer", mock.Anything, mock.Anything).
 		Return(nil, errors.New("Error while inserting player into DB"))
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		PlayerRepository: mockPlayerRepository,
 	}
 
@@ -313,7 +313,7 @@ func TestAddInstanceInfoToTx_Success(t *testing.T) {
 	ppgcr := FlawlessDuo()
 
 	mockInstanceRepository := new(MockInstanceActivityRepository)
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		InstanceActivityRepository: mockInstanceRepository,
 	}
 
@@ -349,7 +349,7 @@ func TestAddInstanceInfoToTx_ErrorRepositoryCall(t *testing.T) {
 	mockInstanceRepository.On("AddInstanceActivity", &tx, entity).
 		Return(nil, errors.New("Something happened while adding entity"))
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		InstanceActivityRepository: mockInstanceRepository,
 	}
 
@@ -397,7 +397,7 @@ func TestAddWeaponInfoToTx_Success(t *testing.T) {
 	mockActivityWeaponStatsRepository.On("AddInstanceWeaponStats", &tx, mock.Anything).
 		Return(&model.InstanceWeaponStats{}, nil)
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		Redis:                         mockRedisService,
 		WeaponRepository:              mockWeaponRepository,
 		InstanceWeaponStatsRepository: mockActivityWeaponStatsRepository,
@@ -422,7 +422,7 @@ func TestAddWeaponInfoToTx_ErrorWhileCallingManifest(t *testing.T) {
 	mockRedisService.On("GetManifestEntity", mock.Anything, "37189237").
 		Return(nil, fmt.Errorf("Some error getting manifest entity"))
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		Redis: mockRedisService,
 	}
 
@@ -465,7 +465,7 @@ func TestAddWeaponInfoToTx_ErrorWhileSavingWeapon(t *testing.T) {
 	mockWeaponRepository.On("AddWeapon", &tx, weapon).
 		Return(nil, fmt.Errorf("Error adding weapon"))
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		Redis:            mockRedisService,
 		WeaponRepository: mockWeaponRepository,
 	}
@@ -514,7 +514,7 @@ func TestAddWeaponInfoToTx_ErrorSavingInstanceWeaponStats(t *testing.T) {
 	mockInstanceWeaponRepository.On("AddInstanceWeaponStats", &tx, mock.Anything).
 		Return(nil, fmt.Errorf("Something happened when adding weapon stats to DB"))
 
-	sut := PgcrServiceImpl{
+	sut := Processor{
 		Redis:                         mockRedisService,
 		WeaponRepository:              mockWeaponRepository,
 		InstanceWeaponStatsRepository: mockInstanceWeaponRepository,
