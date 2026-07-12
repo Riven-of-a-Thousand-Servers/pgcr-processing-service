@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
+	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/utils"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -413,4 +414,22 @@ func compareInt(a, b int64) int {
 	} else {
 		return 0
 	}
+}
+
+func GroupCharacters(entries []types.PostGameCarnageReportEntry) (map[int64][]types.PostGameCarnageReportEntry, error) {
+	playersGrouped := make(map[int64][]types.PostGameCarnageReportEntry)
+	for _, entry := range entries {
+		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
+		if err != nil {
+			slog.Error("Something went wrong when parsing membership ID to Int64", "MembershipId", entry.Player.DestinyUserInfo.MembershipId)
+			return nil, err
+		}
+		val, ok := playersGrouped[membershipId]
+		if ok {
+			playersGrouped[membershipId] = append(val, entry)
+		} else {
+			playersGrouped[membershipId] = []types.PostGameCarnageReportEntry{entry}
+		}
+	}
+	return playersGrouped, nil
 }

@@ -3,15 +3,14 @@ package mapper
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
 	"pgcr-processing-service/internal/compress"
 	"pgcr-processing-service/internal/redis"
-
-	types "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
-	enums "github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
+	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/utils"
 )
 
 type PgcrMapper struct {
@@ -45,7 +44,6 @@ var leviHashes = map[int64]bool{
 func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte, *types.ProcessedPostGameCarnageReport, error) {
 	processedPgcr, err := processPgcr(pgcr, p.ManifestClient)
 	if err != nil {
-		log.Fatal(err)
 		return nil, nil, err
 	}
 
@@ -63,7 +61,7 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) 
 	// Calculate start and end time
 	startTime, err := time.Parse(time.RFC3339, pgcr.Period)
 	if err != nil {
-		log.Panicf("Something went wrong when parsing the period for PGCR [%s]: %v", pgcr.ActivityDetails.InstanceId, err)
+		slog.Error("Something went wrong when parsing the period for PGCR", "InstanceId", pgcr.ActivityDetails.InstanceId, "Error", err)
 		return nil, err
 	}
 
@@ -80,7 +78,7 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) 
 
 	instanceId, err := strconv.ParseInt(pgcr.ActivityDetails.InstanceId, 10, 64)
 	if err != nil {
-		log.Panicf("Unable to convert instanceId [%s] to int64 for some reason?", pgcr.ActivityDetails.InstanceId)
+		slog.Error("Unable to convert instanceIdto int64 for some reason?", "InstanceId", pgcr.ActivityDetails.InstanceId)
 		return nil, err
 	}
 
@@ -88,26 +86,27 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) 
 	entity.ActivityHash = pgcr.ActivityDetails.ActivityHash
 
 	activitiyHash := pgcr.ActivityDetails.ActivityHash
-	maniestResponse, err := redisService.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
+	manifestResponse, err := redisService.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
 	if err != nil {
-		log.Panicf("Unable to find activity hash [%d] in Redis: %v", activitiyHash, err)
+		slog.Error("Unable to find activity hash in Redis", "ActivityHash", activitiyHash, "Error", err)
 		return nil, err
 	}
 
-	raidName, raidDifficulty, err := enums.GetRaidAndDifficulty(maniestResponse.DisplayProperties.Name)
+	raidName, raidDifficulty, err := utils.GetRaidAndDifficulty(manifestResponse.DisplayProperties.Name)
 	if err != nil {
-		log.Panic("Unable to parse activity raid name and raid difficulty")
+		slog.Error("Unable to parse activity raid name and raid difficulty")
 		return nil, err
 	}
 
 	entity.RaidName = raidName
 	entity.RaidDifficulty = raidDifficulty
 
-	var playersGrouped = make(map[int64][]types.PostGameCarnageReportEntry)
+	playersGrouped := make(map[int64][]types.PostGameCarnageReportEntry)
 	for _, entry := range pgcr.Entries {
 		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
-			log.Panicf("Something went wrong when parsing membership ID [%s] to Int64", entry.Player.DestinyUserInfo.MembershipId)
+			slog.Error("Something went wrong when parsing membership ID to Int64", "MembershipId", entry.Player.DestinyUserInfo.MembershipId)
+			return nil, err
 		}
 		val, ok := playersGrouped[membershipId]
 		if ok {
@@ -139,7 +138,7 @@ Outerloop:
 
 	fresh, err := resolveFromBeginning(pgcr, flawless)
 	if err != nil {
-		log.Panicf("Error parsing StartTime when determining if PGCR [%d] is fresh: %v", instanceId, err)
+		slog.Error("Error parsing StartTime when determining if PGCRis fresh", "InstanceId", instanceId, "Error", err)
 		return nil, err
 	}
 
@@ -161,7 +160,7 @@ func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntr
 	result := []types.PlayerData{}
 	for membershipId, entries := range groups {
 		if len(entries) == 0 {
-			log.Printf("Player with membershipId [%d] has no entries, skipping\n", membershipId)
+			slog.Info("Player with membershipId has no entries, skipping", "MembershipId", membershipId)
 			continue
 		}
 
@@ -177,7 +176,7 @@ func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntr
 		for _, e := range entries {
 			characterInfo, err := createPlayerCharacter(&e)
 			if err != nil {
-				log.Panicf("There was an error create character information for player with Id [%d]: %v\n", membershipId, err)
+				slog.Error("There was an error create character information for player with Id", "MembershipId", membershipId, "Error", err)
 				return nil, err
 			}
 			characters = append(characters, *characterInfo)
@@ -203,7 +202,7 @@ func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.Play
 
 	characterId, err := strconv.ParseInt(entry.CharacterId, 10, 64)
 	if err != nil {
-		log.Panicf("Unable to parse character Id [%s] to int64", entry.CharacterId)
+		slog.Error("Unable to parse character Id to int64", "CharacterId", entry.CharacterId)
 		return nil, err
 	}
 
@@ -239,24 +238,6 @@ func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.Play
 		characterInfo.AbilityInformation = abilityInfo
 	}
 	return &characterInfo, nil
-}
-
-func GroupCharacters(entries []types.PostGameCarnageReportEntry) (map[int64][]types.PostGameCarnageReportEntry, error) {
-	var playersGrouped = make(map[int64][]types.PostGameCarnageReportEntry)
-	for _, entry := range entries {
-		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
-		if err != nil {
-			log.Panicf("Something went wrong when parsing membership ID [%s] to Int64", entry.Player.DestinyUserInfo.MembershipId)
-			return nil, err
-		}
-		val, ok := playersGrouped[membershipId]
-		if ok {
-			playersGrouped[membershipId] = append(val, entry)
-		} else {
-			playersGrouped[membershipId] = []types.PostGameCarnageReportEntry{entry}
-		}
-	}
-	return playersGrouped, nil
 }
 
 // Resolves if a raid was fresh or not, courtesy of @Newo

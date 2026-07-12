@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	"pgcr-processing-service/internal/types"
 )
 
 type PGCRCompressor interface {

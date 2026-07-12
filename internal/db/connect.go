@@ -3,27 +3,65 @@ package db
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
+	"sync"
 
-	"github.com/joho/godotenv"
+	"github.com/pressly/goose/v3"
 )
+
+//go:embed migrations/*.sql
+var fs embed.FS
+
+var (
+	gooseInitErr error
+	gooseOnce    sync.Once
+)
+
+func init() {
+	goose.SetBaseFS(fs)
+}
 
 // Connect to Postgres Database with the required parameters
 func Connect(ctx context.Context) (*sql.DB, error) {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading environment file")
-	}
-
 	username := os.Getenv("POSTGRES_USERNAME")
 	password := os.Getenv("POSTGRES_PASSWORD")
 
 	if username == "" || password == "" {
-		error := fmt.Errorf("Unable to load required parameters to connect to Postgres")
-		return nil, error
+		return nil, fmt.Errorf("Unable to load required parameters to connect to Postgres")
 	}
 
-	url := fmt.Sprintf("postgres://%s:%s@localhost:5432/rivenbot?sslmode=disabled", username, password)
-	return OpenDB(url)
+	url := fmt.Sprintf("postgres://%s:%s@localhost:5432/postgres?sslmode=disable", username, password)
+
+	db, err := openDB(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("Failed to connect to database: %w", err)
+	}
+
+	if err := initGoose(); err != nil {
+		slog.Error("Failed to initialize Goose", "error", err)
+		return nil, err
+	}
+
+	if err := goose.Up(db, "migrations"); err != nil {
+		slog.Error("Failed to apply migrations", "error", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func initGoose() error {
+	gooseOnce.Do(func() {
+		goose.SetBaseFS(fs)
+		gooseInitErr = goose.SetDialect("pgx")
+	})
+	return gooseInitErr
 }

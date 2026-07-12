@@ -6,118 +6,145 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
+
+	"github.com/Riven-of-a-thousand-servers/commons"
+	"pgcr-processing-service/internal/db"
 	"pgcr-processing-service/internal/mapper"
-	"pgcr-processing-service/internal/model"
 	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/redis"
-	"pgcr-processing-service/internal/repository"
-	"strconv"
-	"time"
-
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/utils"
 )
 
-type PgcrProcessor interface {
+type Processor interface {
 	DoPgcr(types.ProcessedPostGameCarnageReport) error
 }
 
-type Processor struct {
-	Db                            *sql.DB
-	RabbitMq                      *rabbitmq.RabbitMQ
-	PgcrMapper                    mapper.PgcrMapper
-	Redis                         redis.Service
-	RawPgcrRepository             repository.RawPgcrRepository
-	PlayerRepository              repository.PlayerRepository
-	RaidRepository                repository.RaidRepository
-	InstanceActivityRepository    repository.InstanceActivityRepository
-	PlayerRaidStatsRepository     repository.PlayerRaidStatsRepository
-	WeaponRepository              repository.WeaponRepository
-	InstanceWeaponStatsRepository repository.InstanceActivityWeaponStatsRepository
+type PgcrProcessor struct {
+	Querier    db.Querier
+	RabbitMq   *rabbitmq.RabbitMQ
+	PgcrMapper mapper.PgcrMapper
+	Redis      redis.Service
 }
 
-var (
-	pst = time.FixedZone("PST", -8*60*60)
-	pdt = time.FixedZone("PDT", -7*60*60)
-)
-
-var activeRaids = map[types.RaidName]bool{
-	types.SALVATIONS_EDGE:     true,
-	types.CROTAS_END:          true,
-	types.ROOT_OF_NIGHTMARES:  true,
-	types.KINGS_FALL:          true,
-	types.VOW_OF_THE_DISCIPLE: true,
-	types.VAULT_OF_GLASS:      true,
-	types.DEEP_STONE_CRYPT:    true,
-	types.GARDEN_OF_SALVATION: true,
-	types.LAST_WISH:           true,
-	types.CROWN_OF_SORROW:     false,
-	types.SCOURGE_OF_THE_PAST: false,
-	types.SPIRE_OF_STARS:      false,
-	types.EATER_OF_WORLDS:     false,
-	types.LEVIATHAN:           false,
-}
-
-var raidReleaseDates = map[types.RaidName]time.Time{
-	types.SALVATIONS_EDGE:     time.Date(2024, time.June, 7, 9, 0, 0, 0, pdt),
-	types.CROTAS_END:          time.Date(2023, time.September, 1, 9, 0, 0, 0, pdt),
-	types.ROOT_OF_NIGHTMARES:  time.Date(2023, time.March, 10, 9, 0, 0, 0, pst),
-	types.KINGS_FALL:          time.Date(2022, time.August, 26, 9, 0, 0, 0, pdt),
-	types.VOW_OF_THE_DISCIPLE: time.Date(2022, time.March, 5, 9, 0, 0, 0, pst),
-	types.VAULT_OF_GLASS:      time.Date(2021, time.May, 22, 9, 0, 0, 0, pdt),
-	types.DEEP_STONE_CRYPT:    time.Date(2020, time.November, 21, 9, 0, 0, 0, pst),
-	types.GARDEN_OF_SALVATION: time.Date(2019, time.October, 5, 9, 0, 0, 0, pdt),
-	types.CROWN_OF_SORROW:     time.Date(2019, time.June, 4, 9, 0, 0, 0, pdt),
-	types.LAST_WISH:           time.Date(2018, time.September, 14, 9, 0, 0, 0, pdt),
-	types.SCOURGE_OF_THE_PAST: time.Date(2018, time.December, 7, 9, 0, 0, 0, pst),
-	types.SPIRE_OF_STARS:      time.Date(2018, time.May, 8, 9, 0, 0, 0, pdt),
-	types.EATER_OF_WORLDS:     time.Date(2017, time.December, 6, 9, 0, 0, 0, pst),
-	types.LEVIATHAN:           time.Date(2017, time.September, 13, 9, 0, 0, 0, pdt),
+func NewPgcrProcessor(querier db.Querier, rabbitmq *rabbitmq.RabbitMQ, redis redis.Service) *PgcrProcessor {
+	return &PgcrProcessor{
+		Querier:  querier,
+		RabbitMq: rabbitmq,
+		Redis:    redis,
+	}
 }
 
 // Saves a processed pgcr to the Postgres DB
-func (ps *Processor) DoPgcr(pgcr types.ProcessedPostGameCarnageReport) error {
-	tx, err := ps.Db.Begin()
-	if err != nil {
-		return fmt.Errorf("Error opening transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+func (p *PgcrProcessor) DoPgcr(ctx context.Context, pgcr types.ProcessedPostGameCarnageReport, b []byte) error {
+	instance := db.CreateInstanceParams{
+		ID:              pgcr.InstanceId,
+		ActivityHash:    pgcr.ActivityHash,
+		IsFresh:         pgcr.FromBeginning,
+		PlayerCount:     int32(len(pgcr.PlayerInformation)),
+		StartTime:       pgcr.StartTime,
+		EndTime:         pgcr.EndTime,
+		DurationSeconds: int32(pgcr.EndTime.Sub(pgcr.StartTime).Seconds()),
 	}
 
-	defer tx.Rollback()
-
-	err = ps.addPlayerInfoToTx(tx, &pgcr)
-	if err != nil {
-		return fmt.Errorf("Error adding players to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	rawPgcr := db.CreatePgcrParams{
+		InstanceID: pgcr.InstanceId,
+		Blob:       b,
 	}
 
-	err = ps.addRaidInfoToTx(tx, &pgcr)
-	if err != nil {
-		return fmt.Errorf("Error adding raids to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// Player
+	var destinyPlayer []db.CreateDestinyPlayerParams
+	for _, pi := range pgcr.PlayerInformation {
+		player := db.CreateDestinyPlayerParams{
+			MembershipID:   pi.MembershipId,
+			MembershipType: int32(pi.MembershipType),
+		}
+
+		if pi.GlobalDisplayName != "" {
+			player.DisplayName = sql.NullString{String: pi.GlobalDisplayName}
+		} else {
+			player.DisplayName = sql.NullString{String: pi.DisplayName}
+		}
+
+		if pi.GlobalDisplayNameCode != 0 {
+			player.GlobalDisplayNameCode = sql.NullInt32{
+				Int32: int32(pi.GlobalDisplayNameCode),
+			}
+		}
+
+		// InstancePlayer
+		instancePlayer := db.CreateInstancePlayerParams{
+			InstanceID:   pgcr.InstanceId,
+			MembershipID: pi.MembershipId,
+		}
+
+		// InstanceCharacter
+		var instancePlayerCharacters []db.CreateInstanceCharacterParams
+		for _, ci := range pi.PlayerCharacterInformation {
+			instanceCharacter := db.CreateInstanceCharacterParams{
+				InstanceID:   pgcr.InstanceId,
+				MembershipID: pi.MembershipId,
+				CharacterID:  ci.CharacterId,
+				EmblemHash:   ci.CharacterEmblem,
+				Completed:    ci.ActivityCompleted,
+				Kills:        int32(ci.Kills),
+				Deaths:       int32(ci.Deaths),
+				Assists:      int32(ci.Assists),
+				Kda:          strconv.FormatFloat(float64(ci.Kda), 'f', -1, 64),
+				Kdr:          strconv.FormatFloat(float64(ci.Kdr), 'f', -1, 64),
+				Efficiency:   ci.Efficiency,
+				SuperKills:   int32(ci.AbilityInformation.SuperKills),
+				GrenadeKills: int32(ci.AbilityInformation.GrenadeKills),
+				MeleeKills:   int32(ci.AbilityInformation.MeleeKills),
+			}
+		}
+
+		destinyPlayer = append(destinyPlayer, player)
 	}
 
-	err = ps.addInstanceInfoToTx(tx, &pgcr)
-	if err != nil {
-		return fmt.Errorf("Error adding instance activity to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	}
-
-	err = ps.addWeaponInfoToTx(tx, &pgcr)
-	if err != nil {
-		return fmt.Errorf("Error adding weapon stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	}
-
-	err = ps.addOverallStatsToTx(tx, &pgcr)
-	if err != nil {
-		return fmt.Errorf("Error adding instance stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return fmt.Errorf("Error commiting transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// InstancePlayer
+	for _, pi := range pgcr.PlayerInformation {
+		if err := p.Querier.CreateInstancePlayer(ctx, db.CreateInstancePlayerParams{
+			InstanceID:   pgcr.InstanceId,
+			MembershipID: pi.MembershipId,
+		}); err != nil {
+		}
 	}
 
 	return nil
+	// err = p.addPlayerInfoToTx(tx, &pgcr)
+	// if err != nil {
+	// 	return fmt.Errorf("Error adding players to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// err = p.addRaidInfoToTx(tx, &pgcr)
+	// if err != nil {
+	// 	return fmt.Errorf("Error adding raids to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// err = p.addInstanceInfoToTx(tx, &pgcr)
+	// if err != nil {
+	// 	return fmt.Errorf("Error adding instance activity to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// err = p.addWeaponInfoToTx(tx, &pgcr)
+	// if err != nil {
+	// 	return fmt.Errorf("Error adding weapon stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// err = p.addOverallStatsToTx(tx, &pgcr)
+	// if err != nil {
+	// 	return fmt.Errorf("Error adding instance stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// err = tx.Commit()
+	// if err != nil {
+	// 	return fmt.Errorf("Error commiting transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
+	// }
+	//
+	// return nil
 }
 
-func (p Processor) Consume() error {
+func (p *PgcrProcessor) Consume(ctx context.Context) error {
 	deliveries, err := p.RabbitMq.Consumer("pgcr_consumer")
 	if err != nil {
 		return err
@@ -133,11 +160,11 @@ func (p Processor) Consume() error {
 
 		instanceId := pgcr.Response.ActivityDetails.InstanceId
 		slog.Info("Processing pgcr", "InstanceId", instanceId)
-		_, ppgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
+		b, ppgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
 		if err != nil {
 			return fmt.Errorf("Error mapping pgcr [%s] to a processed pgcr: %v", instanceId, err)
 		}
-		err = p.DoPgcr(*ppgcr)
+		err = p.DoPgcr(ctx, *ppgcr, b)
 		if err != nil {
 			return fmt.Errorf("Error processing ppgcr [%d] into database tables: %v", ppgcr.InstanceId, err)
 		}
@@ -147,11 +174,11 @@ func (p Processor) Consume() error {
 }
 
 // Adds info to the transaction regarding player specific stats
-func (ps *Processor) addOverallStatsToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (p *Processor) addOverallStatsToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	entities := mapOverallStats(ppgcr)
 
 	for _, entity := range entities {
-		_, err := ps.PlayerRaidStatsRepository.AddPlayerRaidStats(tx, entity)
+		_, err := p.PlayerRaidStatsRepository.AddPlayerRaidStats(tx, entity)
 		if err != nil {
 			return fmt.Errorf("Error adding stats for player to transaction. MembershipId: [%d], Raid: [%s], Difficulty: [%s]: %v",
 				entity.PlayerMembershipId, ppgcr.RaidName, ppgcr.RaidDifficulty, err)
@@ -208,11 +235,11 @@ func SetLowmanFlags(entity *model.PlayerRaidStatsEntity, flawless bool, playerco
 	entity.TrioFlawless = flawless && playercount == 3 && entity.FullClears == 1
 }
 
-func (ps *Processor) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (p *Processor) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, player := range ppgcr.PlayerInformation {
 		for _, character := range player.PlayerCharacterInformation {
 			entity := MapInstanceActivityEntity(ppgcr, &player, &character)
-			_, err := ps.InstanceActivityRepository.AddInstanceActivity(tx, entity)
+			_, err := p.InstanceActivityRepository.AddInstanceActivity(tx, entity)
 			if err != nil {
 				return fmt.Errorf("Error adding instance activity [%s:%s] to transaction. Player MembershipId: [%d], CharacterId: [%d], Pgcr: [%d]",
 					ppgcr.RaidName, ppgcr.RaidDifficulty, player.MembershipId, character.CharacterId, ppgcr.InstanceId)
@@ -222,11 +249,11 @@ func (ps *Processor) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostG
 	return nil
 }
 
-func (ps *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (p *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, player := range ppgcr.PlayerInformation {
 		for _, character := range player.PlayerCharacterInformation {
 			for _, weapon := range character.WeaponInformation {
-				manifestEntity, err := ps.Redis.GetManifestEntity(context.Background(), strconv.FormatInt(weapon.WeaponHash, 10))
+				manifestEntity, err := p.Redis.GetManifestEntity(context.Background(), strconv.FormatInt(weapon.WeaponHash, 10))
 				if err != nil {
 					return fmt.Errorf("Error while retrieving weapon with hash [%d] from Redis", weapon.WeaponHash)
 				}
@@ -238,7 +265,7 @@ func (ps *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGam
 					WeaponEquipmentSlot: utils.GetEquippingSlot(int64(manifestEntity.EquippingBlock.EquipmentSlotTypeHash)),
 				}
 
-				_, err = ps.WeaponRepository.AddWeapon(tx, weaponEntity)
+				_, err = p.WeaponRepository.AddWeapon(tx, weaponEntity)
 				if err != nil {
 					return fmt.Errorf("Error while adding weapon with hash [%d] to the transaction: %v", weapon.WeaponHash, err)
 				}
@@ -252,7 +279,7 @@ func (ps *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGam
 					PrecisionRatio:      weapon.PrecisionRatio,
 				}
 
-				_, err = ps.InstanceWeaponStatsRepository.AddInstanceWeaponStats(tx, raidActivityWeaponStatsEntity)
+				_, err = p.InstanceWeaponStatsRepository.AddInstanceWeaponStats(tx, raidActivityWeaponStatsEntity)
 				if err != nil {
 					return fmt.Errorf("Error while adding weapon stats to transaction. WeaponId: [%d], CharacterId: [%d], Pgcr: [%d], MembershipId:MembershipType: [%d:%d]. %v",
 						weapon.WeaponHash, character.CharacterId, ppgcr.InstanceId, player.MembershipId, player.MembershipType, err)
@@ -284,10 +311,10 @@ func MapInstanceActivityEntity(ppgcr *types.ProcessedPostGameCarnageReport, play
 	}
 }
 
-func (ps *Processor) addPlayerInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
+func (p *Processor) addPlayerInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
 	for _, playerInformation := range ppgcr.PlayerInformation {
 		entity := MapPlayerEntity(playerInformation)
-		_, err := ps.PlayerRepository.AddPlayer(tx, entity)
+		_, err := p.PlayerRepository.AddPlayer(tx, entity)
 		if err != nil {
 			return fmt.Errorf("Error adding player: %v", err)
 		}
@@ -323,24 +350,4 @@ func MapPlayerEntity(playerData types.PlayerData) model.PlayerEntity {
 	entity.Characters = characters
 
 	return entity
-}
-
-// Adds raids information to the SQL transaction
-func (ps *Processor) addRaidInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
-	entity := MapPgcrToRaidEntity(ppgcr)
-	_, err := ps.RaidRepository.AddRaidInfo(tx, entity)
-	if err != nil {
-		return fmt.Errorf("Error while adding raid to DB: %v", err)
-	}
-	return nil
-}
-
-func MapPgcrToRaidEntity(ppgcr *types.ProcessedPostGameCarnageReport) model.RaidEntity {
-	return model.RaidEntity{
-		RaidName:       string(ppgcr.RaidName),
-		RaidDifficulty: string(ppgcr.RaidDifficulty),
-		RaidHash:       ppgcr.ActivityHash,
-		IsActive:       activeRaids[ppgcr.RaidName],
-		ReleaseDate:    raidReleaseDates[ppgcr.RaidName],
-	}
 }
