@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Riven-of-a-Thousand-Servers/rivenbot-commons/pkg/types"
+	"pgcr-processing-service/internal/types"
+
 	"github.com/google/go-cmp/cmp"
 )
 

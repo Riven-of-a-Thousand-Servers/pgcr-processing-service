@@ -38,7 +38,7 @@ type DestinyPlayer struct {
 	GlobalDisplayNameCode sql.NullInt32  `json:"global_display_name_code"`
 	TotalClears           int32          `json:"total_clears"`
 	TotalFullClears       int32          `json:"total_full_clears"`
-	IsPrivate             sql.NullBool   `json:"is_private"`
+	IsPublic              sql.NullBool   `json:"is_public"`
 	LastCrawled           interface{}    `json:"last_crawled"`
 	LastSeen              interface{}    `json:"last_seen"`
 	CreatedAt             interface{}    `json:"created_at"`

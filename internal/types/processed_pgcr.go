@@ -25,6 +25,10 @@ type PlayerData struct {
 	DisplayName                string                       `json:"displayName"`
 	GlobalDisplayName          string                       `json:"globalDisplayName"`
 	GlobalDisplayNameCode      int                          `json:"globalDisplayNameCode"`
+	Completed                  bool                         `json:"completed"`
+	TimePlayedSeconds          int32                        `json:"timePlayedSeconds"`
+	IconPath                   string                       `json:"iconPath"`
+	IsPublic                   bool                         `json:"isPrivate"`
 	PlayerCharacterInformation []PlayerCharacterInformation `json:"characterInformation"`
 }
 

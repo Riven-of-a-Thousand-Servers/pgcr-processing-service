@@ -10,7 +10,7 @@ import (
 	"database/sql"
 )
 
-const createDestinyPlayer = `-- name: CreateDestinyPlayer :exec
+const createDestinyPlayer = `-- name: CreateDestinyPlayer :one
 INSERT INTO destiny_player (
     membership_id,
     membership_type,
@@ -20,7 +20,7 @@ INSERT INTO destiny_player (
     global_display_name_code,
     total_clears,
     total_full_clears,
-    is_private,
+    is_public,
     last_crawled,
     last_seen
 ) VALUES (
@@ -35,7 +35,19 @@ INSERT INTO destiny_player (
     $9,
     $10,
     $11
-)
+) ON CONFLICT (membership_id)
+DO UPDATE
+    SET
+        membership_id = excluded.membership_id,
+        membership_type = excluded.membership_type,
+        global_display_name = excluded.global_display_name,
+        global_display_name_code = excluded.global_display_name_code,
+        icon_path = excluded.icon_path,
+        is_public = excluded.is_public,
+        global_display_name = excluded.global_display_name,
+        last_seen = now(),
+        last_crawled = now()
+RETURNING membership_id, membership_type, icon_path, display_name, global_display_name, global_display_name_code, total_clears, total_full_clears, is_public, last_crawled, last_seen, created_at
 `
 
 type CreateDestinyPlayerParams struct {
@@ -47,13 +59,13 @@ type CreateDestinyPlayerParams struct {
 	GlobalDisplayNameCode sql.NullInt32  `json:"global_display_name_code"`
 	TotalClears           int32          `json:"total_clears"`
 	TotalFullClears       int32          `json:"total_full_clears"`
-	IsPrivate             sql.NullBool   `json:"is_private"`
+	IsPublic              sql.NullBool   `json:"is_public"`
 	LastCrawled           interface{}    `json:"last_crawled"`
 	LastSeen              interface{}    `json:"last_seen"`
 }
 
-func (q *Queries) CreateDestinyPlayer(ctx context.Context, arg CreateDestinyPlayerParams) error {
-	_, err := q.exec(ctx, q.createDestinyPlayerStmt, createDestinyPlayer,
+func (q *Queries) CreateDestinyPlayer(ctx context.Context, arg CreateDestinyPlayerParams) (DestinyPlayer, error) {
+	row := q.queryRow(ctx, q.createDestinyPlayerStmt, createDestinyPlayer,
 		arg.MembershipID,
 		arg.MembershipType,
 		arg.IconPath,
@@ -62,9 +74,43 @@ func (q *Queries) CreateDestinyPlayer(ctx context.Context, arg CreateDestinyPlay
 		arg.GlobalDisplayNameCode,
 		arg.TotalClears,
 		arg.TotalFullClears,
-		arg.IsPrivate,
+		arg.IsPublic,
 		arg.LastCrawled,
 		arg.LastSeen,
 	)
+	var i DestinyPlayer
+	err := row.Scan(
+		&i.MembershipID,
+		&i.MembershipType,
+		&i.IconPath,
+		&i.DisplayName,
+		&i.GlobalDisplayName,
+		&i.GlobalDisplayNameCode,
+		&i.TotalClears,
+		&i.TotalFullClears,
+		&i.IsPublic,
+		&i.LastCrawled,
+		&i.LastSeen,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const incrementPlayerCounts = `-- name: IncrementPlayerCounts :exec
+UPDATE destiny_player
+SET
+    total_clears = total_clears + CASE WHEN $2::boolean THEN 1 ELSE 0 END,
+    total_full_clears = total_full_clears + CASE WHEN $3::boolean THEN 1 ELSE 0 END
+WHERE membership_id = $1
+`
+
+type IncrementPlayerCountsParams struct {
+	MembershipID int64 `json:"membership_id"`
+	Column2      bool  `json:"column_2"`
+	Column3      bool  `json:"column_3"`
+}
+
+func (q *Queries) IncrementPlayerCounts(ctx context.Context, arg IncrementPlayerCountsParams) error {
+	_, err := q.exec(ctx, q.incrementPlayerCountsStmt, incrementPlayerCounts, arg.MembershipID, arg.Column2, arg.Column3)
 	return err
 }

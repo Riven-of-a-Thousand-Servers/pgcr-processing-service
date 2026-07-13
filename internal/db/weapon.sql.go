@@ -23,7 +23,9 @@ VALUES (
     $3,
     $4,
     $5
-)
+) ON CONFLICT (weapon_hash)
+DO NOTHING
+RETURNING weapon_hash
 `
 
 type CreateWeaponParams struct {

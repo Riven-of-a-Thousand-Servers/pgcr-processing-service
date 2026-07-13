@@ -4,83 +4,284 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
-	"github.com/Riven-of-a-thousand-servers/commons"
 	"pgcr-processing-service/internal/db"
 	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/redis"
+	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/utils"
+
+	"github.com/rabbitmq/amqp091-go"
 )
+
+type Source int
+
+const (
+	crawler Source = iota + 1
+	dataset
+)
+
+var sources map[Source]string = map[Source]string{
+	crawler: "crawler",
+	dataset: "dataset",
+}
+
+var reverseSources map[string]Source = map[string]Source{
+	"crawler": crawler,
+	"dataset": dataset,
+}
+
+type Status int
+
+const (
+	processing Status = iota + 1
+	errored
+	success
+)
+
+var statuses map[Status]string = map[Status]string{
+	processing: "processing",
+	errored:    "error",
+	success:    "success",
+}
+
+const staleThreshold = 5 * time.Minute
 
 type Processor interface {
 	DoPgcr(types.ProcessedPostGameCarnageReport) error
 }
 
 type PgcrProcessor struct {
-	Querier    db.Querier
+	DB         *sql.DB
+	Queries    *db.Queries
 	RabbitMq   *rabbitmq.RabbitMQ
 	PgcrMapper mapper.PgcrMapper
 	Redis      redis.Service
 }
 
-func NewPgcrProcessor(querier db.Querier, rabbitmq *rabbitmq.RabbitMQ, redis redis.Service) *PgcrProcessor {
+func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, redis redis.Service) *PgcrProcessor {
 	return &PgcrProcessor{
-		Querier:  querier,
+		DB:       db,
+		Queries:  queries,
 		RabbitMq: rabbitmq,
 		Redis:    redis,
 	}
 }
 
+func (p *PgcrProcessor) StartWork(ctx context.Context, id int) error {
+	d, ch, err := p.RabbitMq.Consumer(ctx, fmt.Sprintf("pgcr_consumer_%d", id))
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Consumer shutting down", "Id", id)
+			return ctx.Err()
+		case delivery, ok := <-d:
+			if !ok {
+				slog.Info("Delivery channel closed by the broker", "Id", id)
+				return nil
+			}
+			p.handleDelivery(ctx, delivery)
+		}
+	}
+}
+
+func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Delivery) {
+	var pgcr types.PostGameCarnageReportResponse
+	err := json.Unmarshal(delivery.Body, &pgcr)
+	if err != nil {
+		slog.Error("Error unmarshalling body from message", "Error", err)
+		delivery.Nack(false, false)
+	}
+
+	instanceId := pgcr.Response.ActivityDetails.InstanceId
+	instanceId64, _ := strconv.ParseInt(instanceId, 10, 64)
+
+	slog.Info("Processing pgcr", "InstanceId", instanceId)
+	b, processedPgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
+	if err != nil {
+		slog.Error("Error mapping pgcr to a processed pgcr", "instanceId", instanceId, "error", err)
+		delivery.Nack(false, false)
+		return
+	}
+
+	source, err := extractSource(delivery.Headers)
+	if err != nil {
+		slog.Warn("Unable to extract PGCR source from amqp headers", "error", err)
+		delivery.Nack(false, false)
+		return
+	}
+
+	tx, err := p.DB.BeginTx(ctx, nil)
+	if err != nil {
+		slog.Error("Failed to begin transaction", "error", err)
+		delivery.Nack(false, true)
+		return
+	}
+	defer tx.Rollback()
+
+	qtx := p.Queries.WithTx(tx)
+	err = p.DoPgcr(ctx, qtx, processedPgcr, source, b)
+	if err != nil {
+		if markErr := p.LedgerMarkError(ctx, instanceId64, err); markErr != nil {
+			slog.Error("Failed to mark ledger entry as failed", "instanceId", instanceId, "error", err)
+		}
+		slog.Error("Error processing pgcr into db", "instanceId", instanceId, "error", err)
+		delivery.Nack(false, true)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		if markErr := p.LedgerMarkError(ctx, instanceId64, err); markErr != nil {
+			slog.Error("Failed to mark ledger entry as failed", "instanceId", instanceId, "error", err)
+		}
+		slog.Error("Failed to commit transaction", "instanceId", instanceId, "error", err)
+		delivery.Nack(false, true)
+		return
+	}
+
+	slog.Info("Finished processing pgcr", "InstanceId", instanceId)
+	if err := p.LedgerMarkSuccess(ctx, instanceId64); err != nil {
+		slog.Error("Failed to mark ledger entry as processed", "instanceId", instanceId)
+	}
+
+	delivery.Ack(false)
+}
+
+func (p *PgcrProcessor) LedgerMarkSuccess(ctx context.Context, instanceId int64) error {
+	return p.Queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
+		InstanceID: instanceId,
+		Status:     statuses[success],
+		Error:      sql.NullString{Valid: false},
+	})
+}
+
+func (p *PgcrProcessor) LedgerMarkError(ctx context.Context, instanceId int64, cause error) error {
+	return p.Queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
+		InstanceID: instanceId,
+		Status:     statuses[errored],
+		Error:      sql.NullString{String: cause.Error(), Valid: cause.Error() != ""},
+	})
+}
+
 // Saves a processed pgcr to the Postgres DB
-func (p *PgcrProcessor) DoPgcr(ctx context.Context, pgcr types.ProcessedPostGameCarnageReport, b []byte) error {
-	instance := db.CreateInstanceParams{
+func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types.ProcessedPostGameCarnageReport, source Source, b []byte) error {
+	// If inserting to the ledger fails, skip inserting to the DB
+	entry, err := p.Queries.UpsertLogEntry(ctx, db.UpsertLogEntryParams{
+		InstanceID: pgcr.InstanceId,
+		Source:     sources[source],
+		Status:     statuses[processing],
+	})
+	if err != nil {
+		slog.Error("Failed to insert to ingestion log", "instanceId", pgcr.InstanceId, "error", err)
+		return err
+	}
+
+	switch entry.Status {
+	case statuses[success]:
+		slog.Info("Instanced already processed successfully, skipping", "instanceId", pgcr.InstanceId)
+		return nil
+	case statuses[errored]:
+		slog.Warn("Retrying previously failed instance", "instanceId", pgcr.InstanceId)
+	case statuses[processing]:
+		if time.Since(entry.LastAttemptAt) > staleThreshold {
+			slog.Warn("Reclaiming stale processing entry", "instanceId", pgcr.InstanceId)
+		} else {
+			slog.Info("Instance actively being processed elsewhere, skipping", "instanceId", pgcr.InstanceId)
+			return nil
+		}
+	}
+
+	if err := p.Queries.CreateInstance(ctx, db.CreateInstanceParams{
 		ID:              pgcr.InstanceId,
 		ActivityHash:    pgcr.ActivityHash,
 		IsFresh:         pgcr.FromBeginning,
+		Flawless:        pgcr.Flawless,
 		PlayerCount:     int32(len(pgcr.PlayerInformation)),
 		StartTime:       pgcr.StartTime,
 		EndTime:         pgcr.EndTime,
 		DurationSeconds: int32(pgcr.EndTime.Sub(pgcr.StartTime).Seconds()),
+	}); err != nil {
+		slog.Error("Failed to save instance to db", "instanceId", pgcr.InstanceId, "error", err)
+		return err
 	}
 
-	rawPgcr := db.CreatePgcrParams{
+	if err := p.Queries.CreatePgcr(ctx, db.CreatePgcrParams{
 		InstanceID: pgcr.InstanceId,
 		Blob:       b,
+	}); err != nil {
+		slog.Error("Failed to save raw pgcr instance", "instanceId", pgcr.InstanceId, "error", err)
+		return err
 	}
 
 	// Player
-	var destinyPlayer []db.CreateDestinyPlayerParams
 	for _, pi := range pgcr.PlayerInformation {
 		player := db.CreateDestinyPlayerParams{
 			MembershipID:   pi.MembershipId,
 			MembershipType: int32(pi.MembershipType),
+			IsPublic:       sql.NullBool{Bool: pi.IsPublic, Valid: true},
+			IconPath:       sql.NullString{String: pi.IconPath, Valid: pi.IconPath != ""},
 		}
 
 		if pi.GlobalDisplayName != "" {
-			player.DisplayName = sql.NullString{String: pi.GlobalDisplayName}
+			player.DisplayName = sql.NullString{String: pi.GlobalDisplayName, Valid: pi.GlobalDisplayName != ""}
 		} else {
-			player.DisplayName = sql.NullString{String: pi.DisplayName}
+			player.DisplayName = sql.NullString{String: pi.DisplayName, Valid: pi.DisplayName != ""}
 		}
 
 		if pi.GlobalDisplayNameCode != 0 {
 			player.GlobalDisplayNameCode = sql.NullInt32{
 				Int32: int32(pi.GlobalDisplayNameCode),
+				Valid: pi.GlobalDisplayNameCode != 0,
 			}
 		}
 
+		_, err := p.Queries.CreateDestinyPlayer(ctx, player)
+		if err != nil {
+			slog.Error("Failed to save destiny player", "instanceId", pgcr.InstanceId, "membershipId", player.MembershipID, "membershipType", player.MembershipType)
+			return err
+		}
+
 		// InstancePlayer
-		instancePlayer := db.CreateInstancePlayerParams{
-			InstanceID:   pgcr.InstanceId,
-			MembershipID: pi.MembershipId,
+		err = p.Queries.CreateInstancePlayer(ctx, db.CreateInstancePlayerParams{
+			InstanceID:        pgcr.InstanceId,
+			MembershipID:      pi.MembershipId,
+			Completed:         sql.NullBool{Bool: pi.Completed},
+			TimePlayedSeconds: pi.TimePlayedSeconds,
+		})
+
+		switch {
+		case err == nil:
+			isFullClear := pgcr.FromBeginning && pi.Completed
+			if err := p.Queries.IncrementPlayerCounts(ctx, db.IncrementPlayerCountsParams{
+				MembershipID: pi.MembershipId,
+				Column2:      pi.Completed,
+				Column3:      isFullClear,
+			}); err != nil {
+				slog.Error("Failed to increment clear counts", "membershipId", pi.MembershipId, "error", err)
+				return err
+			}
+		case errors.Is(err, sql.ErrNoRows):
+			slog.Info("destiny_player already recorded, skipping player entirely", "instanceId", pgcr.InstanceId, "membershipId", pi.MembershipId)
+			continue
+		default:
+			slog.Error("Failed to save destiny_player", "instanceId", pgcr.InstanceId, "membershipId", pi.MembershipId)
+			return err
 		}
 
 		// InstanceCharacter
-		var instancePlayerCharacters []db.CreateInstanceCharacterParams
 		for _, ci := range pi.PlayerCharacterInformation {
-			instanceCharacter := db.CreateInstanceCharacterParams{
+			if err := p.Queries.CreateInstanceCharacter(ctx, db.CreateInstanceCharacterParams{
 				InstanceID:   pgcr.InstanceId,
 				MembershipID: pi.MembershipId,
 				CharacterID:  ci.CharacterId,
@@ -91,198 +292,48 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, pgcr types.ProcessedPostGame
 				Assists:      int32(ci.Assists),
 				Kda:          strconv.FormatFloat(float64(ci.Kda), 'f', -1, 64),
 				Kdr:          strconv.FormatFloat(float64(ci.Kdr), 'f', -1, 64),
-				Efficiency:   ci.Efficiency,
+				Efficiency:   int32(ci.Efficiency),
 				SuperKills:   int32(ci.AbilityInformation.SuperKills),
 				GrenadeKills: int32(ci.AbilityInformation.GrenadeKills),
 				MeleeKills:   int32(ci.AbilityInformation.MeleeKills),
-			}
-		}
-
-		destinyPlayer = append(destinyPlayer, player)
-	}
-
-	// InstancePlayer
-	for _, pi := range pgcr.PlayerInformation {
-		if err := p.Querier.CreateInstancePlayer(ctx, db.CreateInstancePlayerParams{
-			InstanceID:   pgcr.InstanceId,
-			MembershipID: pi.MembershipId,
-		}); err != nil {
-		}
-	}
-
-	return nil
-	// err = p.addPlayerInfoToTx(tx, &pgcr)
-	// if err != nil {
-	// 	return fmt.Errorf("Error adding players to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// err = p.addRaidInfoToTx(tx, &pgcr)
-	// if err != nil {
-	// 	return fmt.Errorf("Error adding raids to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// err = p.addInstanceInfoToTx(tx, &pgcr)
-	// if err != nil {
-	// 	return fmt.Errorf("Error adding instance activity to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// err = p.addWeaponInfoToTx(tx, &pgcr)
-	// if err != nil {
-	// 	return fmt.Errorf("Error adding weapon stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// err = p.addOverallStatsToTx(tx, &pgcr)
-	// if err != nil {
-	// 	return fmt.Errorf("Error adding instance stats to transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// err = tx.Commit()
-	// if err != nil {
-	// 	return fmt.Errorf("Error commiting transaction for pgcr [%d]: %v", pgcr.InstanceId, err)
-	// }
-	//
-	// return nil
-}
-
-func (p *PgcrProcessor) Consume(ctx context.Context) error {
-	deliveries, err := p.RabbitMq.Consumer("pgcr_consumer")
-	if err != nil {
-		return err
-	}
-
-	for delivery := range deliveries {
-		var pgcr types.PostGameCarnageReportResponse
-		err := json.Unmarshal(delivery.Body, &pgcr)
-		if err != nil {
-			slog.Error("Error unmarshalling body from message", "Error", err)
-			return fmt.Errorf("Error unmarshalling body from message: %v", err)
-		}
-
-		instanceId := pgcr.Response.ActivityDetails.InstanceId
-		slog.Info("Processing pgcr", "InstanceId", instanceId)
-		b, ppgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
-		if err != nil {
-			return fmt.Errorf("Error mapping pgcr [%s] to a processed pgcr: %v", instanceId, err)
-		}
-		err = p.DoPgcr(ctx, *ppgcr, b)
-		if err != nil {
-			return fmt.Errorf("Error processing ppgcr [%d] into database tables: %v", ppgcr.InstanceId, err)
-		}
-		slog.Info("Finished processing pgcr", "InstanceId", instanceId)
-	}
-	return nil
-}
-
-// Adds info to the transaction regarding player specific stats
-func (p *Processor) addOverallStatsToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
-	entities := mapOverallStats(ppgcr)
-
-	for _, entity := range entities {
-		_, err := p.PlayerRaidStatsRepository.AddPlayerRaidStats(tx, entity)
-		if err != nil {
-			return fmt.Errorf("Error adding stats for player to transaction. MembershipId: [%d], Raid: [%s], Difficulty: [%s]: %v",
-				entity.PlayerMembershipId, ppgcr.RaidName, ppgcr.RaidDifficulty, err)
-		}
-	}
-	return nil
-}
-
-func mapOverallStats(ppgcr *types.ProcessedPostGameCarnageReport) []model.PlayerRaidStatsEntity {
-	entities := []model.PlayerRaidStatsEntity{}
-	for _, player := range ppgcr.PlayerInformation {
-		for _, character := range player.PlayerCharacterInformation {
-			statsEntity := model.PlayerRaidStatsEntity{
-				RaidName:           ppgcr.RaidName,
-				RaidDifficulty:     ppgcr.RaidDifficulty,
-				PlayerMembershipId: player.MembershipId,
-				Kills:              character.Kills,
-				Deaths:             character.Deaths,
-				Assists:            character.Assists,
-				HoursPlayed:        character.TimePlayedSeconds,
-				Flawless:           ppgcr.Flawless,
-				Solo:               ppgcr.Solo,
-				Duo:                ppgcr.Duo,
-				Trio:               ppgcr.Trio,
-				SoloFlawless:       ppgcr.Solo && ppgcr.Flawless,
-				TrioFlawless:       ppgcr.Trio && ppgcr.Flawless,
+			}); err != nil {
+				slog.Error("Failed to save instance character", "instanceId", pgcr.InstanceId, "membershipId", player.MembershipID, "membershipType", player.MembershipType, "characterId", ci.CharacterId)
+				return err
 			}
 
-			clear := 0
-			if character.ActivityCompleted {
-				clear = 1
-			}
-
-			fullClear := 0
-			if character.ActivityCompleted && ppgcr.FromBeginning {
-				fullClear = 1
-			}
-
-			statsEntity.FullClears = fullClear
-			statsEntity.Clears = clear
-			entities = append(entities, statsEntity)
-		}
-	}
-	return entities
-}
-
-func SetLowmanFlags(entity *model.PlayerRaidStatsEntity, flawless bool, playercount int) {
-	entity.Flawless = flawless
-	entity.Solo = playercount == 1 && entity.Clears == 1
-	entity.Duo = playercount == 2 && entity.Clears == 1
-	entity.Trio = playercount == 3 && entity.Clears == 1
-	entity.SoloFlawless = flawless && playercount == 1 && entity.FullClears == 1
-	entity.DuoFlawless = flawless && playercount == 2 && entity.FullClears == 1
-	entity.TrioFlawless = flawless && playercount == 3 && entity.FullClears == 1
-}
-
-func (p *Processor) addInstanceInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
-	for _, player := range ppgcr.PlayerInformation {
-		for _, character := range player.PlayerCharacterInformation {
-			entity := MapInstanceActivityEntity(ppgcr, &player, &character)
-			_, err := p.InstanceActivityRepository.AddInstanceActivity(tx, entity)
-			if err != nil {
-				return fmt.Errorf("Error adding instance activity [%s:%s] to transaction. Player MembershipId: [%d], CharacterId: [%d], Pgcr: [%d]",
-					ppgcr.RaidName, ppgcr.RaidDifficulty, player.MembershipId, character.CharacterId, ppgcr.InstanceId)
-			}
-		}
-	}
-	return nil
-}
-
-func (p *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
-	for _, player := range ppgcr.PlayerInformation {
-		for _, character := range player.PlayerCharacterInformation {
-			for _, weapon := range character.WeaponInformation {
-				manifestEntity, err := p.Redis.GetManifestEntity(context.Background(), strconv.FormatInt(weapon.WeaponHash, 10))
+			for _, ciw := range ci.WeaponInformation {
+				// Weapons
+				strHash := strconv.FormatInt(ciw.WeaponHash, 10)
+				manifestEntity, err := p.Redis.GetManifestEntity(ctx, strHash)
 				if err != nil {
-					return fmt.Errorf("Error while retrieving weapon with hash [%d] from Redis", weapon.WeaponHash)
-				}
-				weaponEntity := model.WeaponEntity{
-					WeaponHash:          weapon.WeaponHash,
-					WeaponIcon:          manifestEntity.DisplayProperties.Icon,
-					WeaponName:          manifestEntity.DisplayProperties.Name,
-					WeaponDamageType:    utils.GetDamageType(manifestEntity.EquippingBlock.AmmoType),
-					WeaponEquipmentSlot: utils.GetEquippingSlot(int64(manifestEntity.EquippingBlock.EquipmentSlotTypeHash)),
+					slog.Error("Unable to fetch manifest entity", "Hash", ciw.WeaponHash, "Error", err)
+					continue
 				}
 
-				_, err = p.WeaponRepository.AddWeapon(tx, weaponEntity)
-				if err != nil {
-					return fmt.Errorf("Error while adding weapon with hash [%d] to the transaction: %v", weapon.WeaponHash, err)
+				if err := p.Queries.CreateWeapon(ctx, db.CreateWeaponParams{
+					WeaponHash:    ciw.WeaponHash,
+					IconUrl:       manifestEntity.DisplayProperties.Icon,
+					WeaponName:    manifestEntity.DisplayProperties.Name,
+					DamageType:    string(utils.GetDamageType(manifestEntity.EquippingBlock.AmmoType)),
+					EquipmentSlot: string(utils.GetEquippingSlot(manifestEntity.EquippingBlock.EquipmentSlotTypeHash)),
+				}); err != nil {
+					slog.Error("Failed to save weapon", "weaponId", strHash)
+					return err
 				}
 
-				raidActivityWeaponStatsEntity := model.InstanceWeaponStats{
-					WeaponId:            weapon.WeaponHash,
-					PlayerCharacterId:   character.CharacterId,
-					InstanceId:          ppgcr.InstanceId,
-					TotalKills:          weapon.Kills,
-					TotalPrecisionKills: weapon.PrecisionKills,
-					PrecisionRatio:      weapon.PrecisionRatio,
-				}
+				// InstanceCharacterWeapons
+				if err := p.Queries.CreateInstanceCharacterWeapon(ctx, db.CreateInstanceCharacterWeaponParams{
+					InstanceID:         pgcr.InstanceId,
+					PlayerMembershipID: pi.MembershipId,
+					PlayerCharacterID:  ci.CharacterId,
+					WeaponID:           ciw.WeaponHash,
+					Kills:              int32(ciw.Kills),
+					PrecisionKills:     int32(ciw.PrecisionKills),
+					PrecisionRatio:     strconv.FormatFloat(float64(ciw.PrecisionRatio), 'f', -1, 64),
+				}); err != nil {
 
-				_, err = p.InstanceWeaponStatsRepository.AddInstanceWeaponStats(tx, raidActivityWeaponStatsEntity)
-				if err != nil {
-					return fmt.Errorf("Error while adding weapon stats to transaction. WeaponId: [%d], CharacterId: [%d], Pgcr: [%d], MembershipId:MembershipType: [%d:%d]. %v",
-						weapon.WeaponHash, character.CharacterId, ppgcr.InstanceId, player.MembershipId, player.MembershipType, err)
+					slog.Error("Failed to save instance character", "instanceId", pgcr.InstanceId, "membershipId", player.MembershipID, "membershipType", player.MembershipType, "characterId", ci.CharacterId, "weaponId", strHash)
+					return err
 				}
 			}
 		}
@@ -290,64 +341,21 @@ func (p *Processor) addWeaponInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGame
 	return nil
 }
 
-func MapInstanceActivityEntity(ppgcr *types.ProcessedPostGameCarnageReport, player *types.PlayerData, character *types.PlayerCharacterInformation) model.InstanceActivityEntity {
-	duration := ppgcr.EndTime.Sub(ppgcr.StartTime)
-	return model.InstanceActivityEntity{
-		InstanceId:         ppgcr.InstanceId,
-		PlayerMembershipId: player.MembershipId,
-		PlayerCharacterId:  character.CharacterId,
-		CharacterEmblem:    character.CharacterEmblem,
-		IsCompleted:        character.ActivityCompleted,
-		Kills:              int32(character.Kills),
-		Deaths:             int32(character.Deaths),
-		Assists:            int32(character.Assists),
-		MeleeKills:         character.AbilityInformation.MeleeKills,
-		SuperKills:         character.AbilityInformation.SuperKills,
-		GrenadeKills:       character.AbilityInformation.GrenadeKills,
-		KillsDeathsAssists: character.Kda,
-		KillsDeathsRatio:   character.Kdr,
-		DurationSeconds:    int64(duration.Seconds()),
-		TimeplayedSeconds:  int64(character.TimePlayedSeconds),
-	}
-}
-
-func (p *Processor) addPlayerInfoToTx(tx *sql.Tx, ppgcr *types.ProcessedPostGameCarnageReport) error {
-	for _, playerInformation := range ppgcr.PlayerInformation {
-		entity := MapPlayerEntity(playerInformation)
-		_, err := p.PlayerRepository.AddPlayer(tx, entity)
-		if err != nil {
-			return fmt.Errorf("Error adding player: %v", err)
-		}
-	}
-	return nil
-}
-
-func MapPlayerEntity(playerData types.PlayerData) model.PlayerEntity {
-	entity := model.PlayerEntity{
-		MembershipId:   playerData.MembershipId,
-		MembershipType: int32(playerData.MembershipType),
-	}
-	if playerData.GlobalDisplayName != "" {
-		entity.DisplayName = playerData.GlobalDisplayName
-	} else {
-		entity.DisplayName = playerData.DisplayName
+func extractSource(headers amqp091.Table) (Source, error) {
+	raw, ok := headers["source"]
+	if !ok {
+		return 0, fmt.Errorf("missing source header")
 	}
 
-	if playerData.GlobalDisplayNameCode != 0 {
-		entity.DisplayNameCode = int32(playerData.GlobalDisplayNameCode)
+	str, ok := raw.(string)
+	if !ok {
+		return 0, fmt.Errorf("source header is not a string, got %T", raw)
 	}
 
-	characters := []model.PlayerCharacterEntity{}
-	for _, playerCharacter := range playerData.PlayerCharacterInformation {
-		entity := model.PlayerCharacterEntity{
-			CharacterId:        playerCharacter.CharacterId,
-			CharacterEmblem:    playerCharacter.CharacterEmblem,
-			CharacterClass:     string(playerCharacter.CharacterClass),
-			PlayerMembershipId: playerData.MembershipId,
-		}
-		characters = append(characters, entity)
+	src, ok := reverseSources[str]
+	if !ok {
+		return 0, fmt.Errorf("unrecognized source value: %q", str)
 	}
-	entity.Characters = characters
 
-	return entity
+	return src, nil
 }

@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS destiny_player (
     global_display_name_code int,
     total_clears int NOT NULL DEFAULT 0,
     total_full_clears int NOT NULL DEFAULT 0,
-    is_private boolean DEFAULT FALSE,
+    is_public boolean DEFAULT FALSE,
     last_crawled timestampz NOT NULL,
     last_seen timestampz,
     created_at timestampz NOT NULL DEFAULT now()
@@ -131,8 +131,8 @@ CREATE INDEX IF NOT EXISTS instance_character_weapon_weapon_idx ON instance_char
 CREATE TABLE IF NOT EXISTS ingestion_log (
     instance_id bigint PRIMARY KEY,
     source text NOT NULL,             -- e.g. 'dataset', 'crawler'
-    -- 'pending' | 'processed' | 'failed'
-    status text NOT NULL DEFAULT 'pending',
+    -- 'success' | 'error' | 'processing'
+    status text NOT NULL DEFAULT 'processing',
     first_seen_at timestamptz NOT NULL DEFAULT now(),
     last_attempt_at timestamptz NOT NULL DEFAULT now(),
     attempt_count int NOT NULL DEFAULT 1,

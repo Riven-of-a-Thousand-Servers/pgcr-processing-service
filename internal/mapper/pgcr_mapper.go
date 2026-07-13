@@ -168,21 +168,33 @@ func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntr
 			MembershipId:          membershipId,
 			MembershipType:        entries[0].Player.DestinyUserInfo.MembershipType,
 			DisplayName:           entries[0].Player.DestinyUserInfo.DisplayName,
+			IsPublic:              entries[0].Player.DestinyUserInfo.IsPublic,
+			IconPath:              entries[0].Player.DestinyUserInfo.IconPath,
 			GlobalDisplayName:     entries[0].Player.DestinyUserInfo.BungieGlobalDisplayName,
 			GlobalDisplayNameCode: entries[0].Player.DestinyUserInfo.BungieGlobalDisplayNameCode,
 		}
 
-		var characters []types.PlayerCharacterInformation
 		for _, e := range entries {
 			characterInfo, err := createPlayerCharacter(&e)
 			if err != nil {
 				slog.Error("There was an error create character information for player with Id", "MembershipId", membershipId, "Error", err)
 				return nil, err
 			}
-			characters = append(characters, *characterInfo)
+			playerInfo.PlayerCharacterInformation = append(playerInfo.PlayerCharacterInformation, *characterInfo)
 		}
 
-		playerInfo.PlayerCharacterInformation = characters
+		for _, c := range playerInfo.PlayerCharacterInformation {
+			if c.ActivityCompleted {
+				playerInfo.Completed = true
+				break
+			}
+		}
+
+		totalTimePlayed := 0
+		for _, c := range playerInfo.PlayerCharacterInformation {
+			totalTimePlayed += c.TimePlayedSeconds
+		}
+		playerInfo.TimePlayedSeconds = int32(totalTimePlayed)
 		result = append(result, playerInfo)
 	}
 

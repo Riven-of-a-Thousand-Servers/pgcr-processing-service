@@ -45,6 +45,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createWeaponStmt, err = db.PrepareContext(ctx, createWeapon); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateWeapon: %w", err)
 	}
+	if q.incrementPlayerCountsStmt, err = db.PrepareContext(ctx, incrementPlayerCounts); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementPlayerCounts: %w", err)
+	}
+	if q.updateLogEntryStatusStmt, err = db.PrepareContext(ctx, updateLogEntryStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateLogEntryStatus: %w", err)
+	}
+	if q.upsertLogEntryStmt, err = db.PrepareContext(ctx, upsertLogEntry); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertLogEntry: %w", err)
+	}
 	return &q, nil
 }
 
@@ -83,6 +92,21 @@ func (q *Queries) Close() error {
 	if q.createWeaponStmt != nil {
 		if cerr := q.createWeaponStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createWeaponStmt: %w", cerr)
+		}
+	}
+	if q.incrementPlayerCountsStmt != nil {
+		if cerr := q.incrementPlayerCountsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementPlayerCountsStmt: %w", cerr)
+		}
+	}
+	if q.updateLogEntryStatusStmt != nil {
+		if cerr := q.updateLogEntryStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateLogEntryStatusStmt: %w", cerr)
+		}
+	}
+	if q.upsertLogEntryStmt != nil {
+		if cerr := q.upsertLogEntryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertLogEntryStmt: %w", cerr)
 		}
 	}
 	return err
@@ -131,6 +155,9 @@ type Queries struct {
 	createInstancePlayerStmt          *sql.Stmt
 	createPgcrStmt                    *sql.Stmt
 	createWeaponStmt                  *sql.Stmt
+	incrementPlayerCountsStmt         *sql.Stmt
+	updateLogEntryStatusStmt          *sql.Stmt
+	upsertLogEntryStmt                *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -144,5 +171,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createInstancePlayerStmt:          q.createInstancePlayerStmt,
 		createPgcrStmt:                    q.createPgcrStmt,
 		createWeaponStmt:                  q.createWeaponStmt,
+		incrementPlayerCountsStmt:         q.incrementPlayerCountsStmt,
+		updateLogEntryStatusStmt:          q.updateLogEntryStatusStmt,
+		upsertLogEntryStmt:                q.upsertLogEntryStmt,
 	}
 }
