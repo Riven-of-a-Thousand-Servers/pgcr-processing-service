@@ -22,8 +22,41 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeut: 5s
+      timeout: 5s
       retries: 3
     ports:
       - "6379:6379"
-
+  rabbitmq:
+    container_name: rabbitmq
+    hostname: rabbitmq
+    image: rabbitmq:management
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+  processing-service:
+    build:
+      context: .
+      args:
+        SERVICE: processing-service
+    # I know its unsafe, its just for development =)
+    environment:
+      POSTGRES_USERNAME: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    container_name: processing-service
+    hostname: processing-service
+    depends_on:
+        postgres:
+          condition: service_healthy
+        redis:
+          condition: service_healthy
+        rabbitmq:
+          condition: service_healthy
+    develop:
+      watch:
+        - path: .
+          action: rebuild

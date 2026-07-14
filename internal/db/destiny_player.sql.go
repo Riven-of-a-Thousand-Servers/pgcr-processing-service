@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createDestinyPlayer = `-- name: CreateDestinyPlayer :one
@@ -44,7 +45,6 @@ DO UPDATE
         global_display_name_code = excluded.global_display_name_code,
         icon_path = excluded.icon_path,
         is_public = excluded.is_public,
-        global_display_name = excluded.global_display_name,
         last_seen = now(),
         last_crawled = now()
 RETURNING membership_id, membership_type, icon_path, display_name, global_display_name, global_display_name_code, total_clears, total_full_clears, is_public, last_crawled, last_seen, created_at
@@ -60,8 +60,8 @@ type CreateDestinyPlayerParams struct {
 	TotalClears           int32          `json:"total_clears"`
 	TotalFullClears       int32          `json:"total_full_clears"`
 	IsPublic              sql.NullBool   `json:"is_public"`
-	LastCrawled           interface{}    `json:"last_crawled"`
-	LastSeen              interface{}    `json:"last_seen"`
+	LastCrawled           time.Time      `json:"last_crawled"`
+	LastSeen              sql.NullTime   `json:"last_seen"`
 }
 
 func (q *Queries) CreateDestinyPlayer(ctx context.Context, arg CreateDestinyPlayerParams) (DestinyPlayer, error) {

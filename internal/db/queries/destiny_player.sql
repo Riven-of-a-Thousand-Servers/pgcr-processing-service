@@ -32,7 +32,6 @@ DO UPDATE
         global_display_name_code = excluded.global_display_name_code,
         icon_path = excluded.icon_path,
         is_public = excluded.is_public,
-        global_display_name = excluded.global_display_name,
         last_seen = now(),
         last_crawled = now()
 RETURNING *;

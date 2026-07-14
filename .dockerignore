@@ -1,0 +1,12 @@
+# Go binaries
+bin/*
+
+makefile
+
+# Utils
+sqlc.yaml
+*.sqlfluff
+
+# Git
+.git
+.github

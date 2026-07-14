@@ -1,4 +1,4 @@
-package pgcrprocessingservice
+package main
 
 import (
 	"context"
@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	rabbitMQUrl = "amqp://user:password@localhost:5672"
-	postgresUrl = "postgres://%s:%s@localhost:5432/postgres?sslmode=disable"
+	rabbitMQUrl = "amqp://rabbitmq:5672"
+	postgresUrl = "postgres://%s:%s@postgres:5432/postgres?sslmode=disable"
+	redisUrl    = "redis:6379"
 	goroutines  = 100
 )
 
@@ -41,13 +42,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	redis := redis.NewService("localhost:6379")
+	redis := redis.NewService(redisUrl)
 	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, redis)
 
 	var wg sync.WaitGroup
 	for i := range goroutines {
 		wg.Go(func() {
+			slog.Info("Starting worker", "Id", i)
 			_ = processor.StartWork(ctx, i)
+			slog.Info("Shutting down worker", "Id", i)
 		})
 	}
 

@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS instance (
     completed boolean NOT NULL,
     player_count int NOT NULL,
     duration_seconds int NOT NULL,
-    end_time timestampz NOT NULL,
-    start_time timestampz NOT NULL,
-    created_at timestampz NOT NULL DEFAULT now(),
+    end_time timestamp NOT NULL,
+    start_time timestamp NOT NULL,
+    created_at timestamp NOT NULL DEFAULT now(),
     CONSTRAINT instance_hash_fk FOREIGN KEY (activity_hash) REFERENCES activity (activity_hash)
 );
 
@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS instance_activity_hash_idx ON instance (activity_hash
 CREATE TABLE IF NOT EXISTS pgcr (
     instance_id bigint PRIMARY KEY,
     blob bytea NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
+    created_at timestamp NOT NULL DEFAULT now(),
     CONSTRAINT instance_id_fk FOREIGN KEY (instance_id) REFERENCES instance (id)
 );
 
@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS destiny_player (
     total_clears int NOT NULL DEFAULT 0,
     total_full_clears int NOT NULL DEFAULT 0,
     is_public boolean DEFAULT FALSE,
-    last_crawled timestampz NOT NULL,
-    last_seen timestampz,
-    created_at timestampz NOT NULL DEFAULT now()
+    last_crawled timestamp NOT NULL,
+    last_seen timestamp,
+    created_at timestamp NOT NULL DEFAULT now()
 );
 
 CREATE INDEX destiny_player_display_name_idx ON destiny_player (display_name);
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS instance_player (
     membership_id bigint NOT NULL,
     completed boolean DEFAULT FALSE,
     time_played_seconds int NOT NULL,
-    created_at timestampz NOT NULL DEFAULT now(),
+    created_at timestamp NOT NULL DEFAULT now(),
     CONSTRAINT instance_player_pk PRIMARY KEY (instance_id, membership_id)
 );
 

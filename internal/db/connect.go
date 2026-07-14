@@ -25,7 +25,7 @@ func init() {
 }
 
 // Connect to Postgres Database with the required parameters
-func Connect(ctx context.Context, url string) (*sql.DB, error) {
+func Connect(ctx context.Context, baseUrl string) (*sql.DB, error) {
 	username := os.Getenv("POSTGRES_USERNAME")
 	password := os.Getenv("POSTGRES_PASSWORD")
 
@@ -33,7 +33,7 @@ func Connect(ctx context.Context, url string) (*sql.DB, error) {
 		return nil, fmt.Errorf("Unable to load required parameters to connect to Postgres")
 	}
 
-	db, err := openDB(url)
+	db, err := openDB(fmt.Sprintf(baseUrl, username, password))
 	if err != nil {
 		return nil, err
 	}

@@ -39,9 +39,9 @@ type DestinyPlayer struct {
 	TotalClears           int32          `json:"total_clears"`
 	TotalFullClears       int32          `json:"total_full_clears"`
 	IsPublic              sql.NullBool   `json:"is_public"`
-	LastCrawled           interface{}    `json:"last_crawled"`
-	LastSeen              interface{}    `json:"last_seen"`
-	CreatedAt             interface{}    `json:"created_at"`
+	LastCrawled           time.Time      `json:"last_crawled"`
+	LastSeen              sql.NullTime   `json:"last_seen"`
+	CreatedAt             time.Time      `json:"created_at"`
 }
 
 type IngestionLog struct {
@@ -55,16 +55,16 @@ type IngestionLog struct {
 }
 
 type Instance struct {
-	ID              int64       `json:"id"`
-	ActivityHash    int64       `json:"activity_hash"`
-	IsFresh         bool        `json:"is_fresh"`
-	Flawless        bool        `json:"flawless"`
-	Completed       bool        `json:"completed"`
-	PlayerCount     int32       `json:"player_count"`
-	DurationSeconds int32       `json:"duration_seconds"`
-	EndTime         interface{} `json:"end_time"`
-	StartTime       interface{} `json:"start_time"`
-	CreatedAt       interface{} `json:"created_at"`
+	ID              int64     `json:"id"`
+	ActivityHash    int64     `json:"activity_hash"`
+	IsFresh         bool      `json:"is_fresh"`
+	Flawless        bool      `json:"flawless"`
+	Completed       bool      `json:"completed"`
+	PlayerCount     int32     `json:"player_count"`
+	DurationSeconds int32     `json:"duration_seconds"`
+	EndTime         time.Time `json:"end_time"`
+	StartTime       time.Time `json:"start_time"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type InstanceCharacter struct {
@@ -101,7 +101,7 @@ type InstancePlayer struct {
 	MembershipID      int64        `json:"membership_id"`
 	Completed         sql.NullBool `json:"completed"`
 	TimePlayedSeconds int32        `json:"time_played_seconds"`
-	CreatedAt         interface{}  `json:"created_at"`
+	CreatedAt         time.Time    `json:"created_at"`
 }
 
 type Pgcr struct {

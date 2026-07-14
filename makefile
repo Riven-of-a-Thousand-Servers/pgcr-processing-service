@@ -11,3 +11,11 @@ build-migrate:
 run-migrate: build-migrate
 	docker compose up -d
 	bin/migrate
+
+.PHONY: docker-compose
+docker-compose:
+	docker compose up --detach --build
+
+.PHONY: docker-watch
+docker-watch:
+	docker compose watch processing-service

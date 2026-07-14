@@ -148,7 +148,7 @@ func GetDamageType(enumValue int) types.DamageType {
 }
 
 type EquippingBlocktypes interface {
-	~int64 | ~string
+	~int64 | ~string | ~int
 }
 
 func GetEquippingSlot[T EquippingBlocktypes](enumValue T) types.EquipmentSlot {

@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 )
 
 const createInstance = `-- name: CreateInstance :exec
@@ -26,15 +27,15 @@ INSERT INTO instance (
 `
 
 type CreateInstanceParams struct {
-	ID              int64       `json:"id"`
-	ActivityHash    int64       `json:"activity_hash"`
-	IsFresh         bool        `json:"is_fresh"`
-	Flawless        bool        `json:"flawless"`
-	Completed       bool        `json:"completed"`
-	PlayerCount     int32       `json:"player_count"`
-	DurationSeconds int32       `json:"duration_seconds"`
-	EndTime         interface{} `json:"end_time"`
-	StartTime       interface{} `json:"start_time"`
+	ID              int64     `json:"id"`
+	ActivityHash    int64     `json:"activity_hash"`
+	IsFresh         bool      `json:"is_fresh"`
+	Flawless        bool      `json:"flawless"`
+	Completed       bool      `json:"completed"`
+	PlayerCount     int32     `json:"player_count"`
+	DurationSeconds int32     `json:"duration_seconds"`
+	EndTime         time.Time `json:"end_time"`
+	StartTime       time.Time `json:"start_time"`
 }
 
 func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) error {
