@@ -29,12 +29,14 @@ func main() {
 		slog.Error("Error happened while connecting to RabbitMQ", "error", err)
 		os.Exit(1)
 	}
+	defer rabbitmq.Conn.Close()
 
 	conn, err := db.Connect(ctx, postgresUrl)
 	if err != nil {
 		slog.Error("Error happened while connecting to DB", "error", err)
 		os.Exit(1)
 	}
+	defer conn.Close()
 
 	queries, err := db.Prepare(ctx, conn)
 	if err != nil {
@@ -43,6 +45,8 @@ func main() {
 	}
 
 	redis := redis.NewService(redisUrl)
+	defer redis.Client.Close()
+
 	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, redis)
 
 	var wg sync.WaitGroup
@@ -55,4 +59,5 @@ func main() {
 	}
 
 	wg.Wait()
+	slog.Info("All workers stopped, cleaning up resources")
 }

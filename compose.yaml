@@ -41,8 +41,10 @@ services:
   processing-service:
     build:
       context: .
+      tags:
+        - "processing-service:latest"
       args:
-        SERVICE: processing-service
+        SERVICE: processor
     # I know its unsafe, its just for development =)
     environment:
       POSTGRES_USERNAME: ${POSTGRES_USERNAME}
