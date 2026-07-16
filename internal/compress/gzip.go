@@ -5,14 +5,14 @@ import (
 	"compress/gzip"
 	"encoding/json"
 
-	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/types/pgcr"
 )
 
 type PGCRCompressor interface {
-	Compress(raw *types.PostGameCarnageReport) ([]byte, error)
+	Compress(raw *pgcr.PostGameCarnageReport) ([]byte, error)
 }
 
-func Gzip(raw *types.PostGameCarnageReport) ([]byte, error) {
+func Gzip(raw *pgcr.PostGameCarnageReport) ([]byte, error) {
 	jsonData, err := json.Marshal(raw)
 	if err != nil {
 		return nil, err

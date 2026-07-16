@@ -1,4 +1,4 @@
-package types
+package pgcr
 
 type PostGameCarnageReportResponse struct {
 	Response        PostGameCarnageReport `json:"Response"`

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/types/pgcr"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -18,11 +18,11 @@ import (
 func TestPgcrCompression(t *testing.T) {
 	// given: a processed PGCR
 	now := time.Now().String()
-	pgcr := types.PostGameCarnageReport{
+	report := pgcr.PostGameCarnageReport{
 		Period:                          now,
 		ActivityWasStartedFromBeginning: true,
 		StartingPhaseIndex:              0,
-		ActivityDetails: types.ActivityDetails{
+		ActivityDetails: pgcr.ActivityDetails{
 			ReferenceId:    128041231,
 			ActivityHash:   128041231,
 			InstanceId:     "177721245",
@@ -31,10 +31,10 @@ func TestPgcrCompression(t *testing.T) {
 			IsPrivate:      false,
 			MembershipType: 0,
 		},
-		Entries: []types.PostGameCarnageReportEntry{
+		Entries: []pgcr.PostGameCarnageReportEntry{
 			{
-				Player: types.PlayerInformation{
-					DestinyUserInfo: types.DestinyUserInfo{
+				Player: pgcr.PlayerInformation{
+					DestinyUserInfo: pgcr.DestinyUserInfo{
 						IconPath:                    "/common/destiny2_content/icons/e63b0d3618767f1fefed5e860b58da5c.png",
 						IsPublic:                    true,
 						MembershipType:              2,
@@ -51,57 +51,57 @@ func TestPgcrCompression(t *testing.T) {
 					EmblemHash:     908153542,
 				},
 				CharacterId: "2305843009261769284",
-				Values: map[string]types.Metric{
+				Values: map[string]pgcr.Metric{
 					"kills": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        125.0,
 							DisplayValue: "125",
 						},
 					},
 					"assists": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        5.0,
 							DisplayValue: "5",
 						},
 					},
 					"completed": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        1.0,
 							DisplayValue: "Yes",
 						},
 					},
 					"deaths": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        6.0,
 							DisplayValue: "6",
 						},
 					},
 					"killsDeathsRatio": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        2.5,
 							DisplayValue: "2.50",
 						},
 					},
 					"killsDeathsAssists": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        2.66666666666,
 							DisplayValue: "2.66",
 						},
 					},
 					"activityDurationSeconds": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        953.0,
 							DisplayValue: "15m 53s",
 						},
 					},
 					"timePlayedSeconds": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        832.0,
 							DisplayValue: "13m 52s",
 						},
 					},
 					"playerCount": {
-						Basic: types.Basic{
+						Basic: pgcr.Basic{
 							Value:        8.0,
 							DisplayValue: "8",
 						},
@@ -112,7 +112,7 @@ func TestPgcrCompression(t *testing.T) {
 	}
 
 	// when: Compress is called
-	compressedBytes, err := Gzip(&pgcr)
+	compressedBytes, err := Gzip(&report)
 
 	// then: The underlying bytes should decompress to the procesed PGCR
 	if err == nil {
@@ -128,15 +128,15 @@ func TestPgcrCompression(t *testing.T) {
 			t.Fatalf("Error reading decompressed data: %v", err)
 		}
 
-		var result types.PostGameCarnageReport
+		var result pgcr.PostGameCarnageReport
 
 		err = json.Unmarshal(decompressed, &result)
 		if err != nil {
 			t.Fatalf("Unable to marshal to JSON: %v", err)
 		}
 
-		if !cmp.Equal(result, pgcr) {
-			original, _ := json.MarshalIndent(pgcr, "", " ")
+		if !cmp.Equal(result, report) {
+			original, _ := json.MarshalIndent(report, "", " ")
 			decompressed, _ := json.MarshalIndent(result, "", " ")
 
 			fmt.Printf("Original JSON:\n %s\n", original)

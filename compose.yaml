@@ -38,7 +38,19 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
-  processing-service:
+  crawler:
+    container_name: crawler
+    hostname: crawler
+    build:
+      context: .
+      tags:
+        - "crawler-service:latest"
+      args:
+        SERVICE: crawler
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+  processor:
     build:
       context: .
       tags:
@@ -49,8 +61,8 @@ services:
     environment:
       POSTGRES_USERNAME: ${POSTGRES_USERNAME}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    container_name: processing-service
-    hostname: processing-service
+    container_name: processor
+    hostname: processor
     depends_on:
         postgres:
           condition: service_healthy

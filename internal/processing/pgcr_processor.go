@@ -14,7 +14,8 @@ import (
 	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/redis"
-	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/types/pgcr"
+	types "pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -97,7 +98,7 @@ func (p *PgcrProcessor) StartWork(ctx context.Context, id int) error {
 }
 
 func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Delivery) {
-	var pgcr types.PostGameCarnageReportResponse
+	var pgcr pgcr.PostGameCarnageReportResponse
 	err := json.Unmarshal(delivery.Body, &pgcr)
 	if err != nil {
 		slog.Error("Error unmarshalling body from message", "Error", err)

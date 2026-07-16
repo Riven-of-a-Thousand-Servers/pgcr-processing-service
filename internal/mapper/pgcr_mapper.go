@@ -9,7 +9,8 @@ import (
 
 	"pgcr-processing-service/internal/compress"
 	"pgcr-processing-service/internal/redis"
-	"pgcr-processing-service/internal/types"
+	"pgcr-processing-service/internal/types/pgcr"
+	"pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
 )
 
@@ -41,7 +42,7 @@ var leviHashes = map[int64]bool{
 
 // This method maps the PGCR into a pre-processed format thats more suitable for features
 // Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
-func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte, *types.ProcessedPostGameCarnageReport, error) {
+func (p *PgcrMapper) ToProcessedPgcr(pgcr *pgcr.PostGameCarnageReport) ([]byte, *rabbitmq.ProcessedPostGameCarnageReport, error) {
 	processedPgcr, err := processPgcr(pgcr, p.ManifestClient)
 	if err != nil {
 		return nil, nil, err
@@ -55,37 +56,37 @@ func (p *PgcrMapper) ToProcessedPgcr(pgcr *types.PostGameCarnageReport) ([]byte,
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) (*types.ProcessedPostGameCarnageReport, error) {
-	var entity types.ProcessedPostGameCarnageReport
+func processPgcr(report *pgcr.PostGameCarnageReport, redisService redis.Service) (*rabbitmq.ProcessedPostGameCarnageReport, error) {
+	var entity rabbitmq.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time
-	startTime, err := time.Parse(time.RFC3339, pgcr.Period)
+	startTime, err := time.Parse(time.RFC3339, report.Period)
 	if err != nil {
-		slog.Error("Something went wrong when parsing the period for PGCR", "InstanceId", pgcr.ActivityDetails.InstanceId, "Error", err)
+		slog.Error("Something went wrong when parsing the period for PGCR", "InstanceId", report.ActivityDetails.InstanceId, "Error", err)
 		return nil, err
 	}
 
-	if len(pgcr.Entries) == 0 {
-		error := fmt.Errorf("No entries in the PGCR [%s], unable to determine the end time of the activity", pgcr.ActivityDetails.InstanceId)
+	if len(report.Entries) == 0 {
+		error := fmt.Errorf("No entries in the PGCR [%s], unable to determine the end time of the activity", report.ActivityDetails.InstanceId)
 		return nil, error
 	}
 
-	activityDurationSeconds := int32(pgcr.Entries[0].Values["activityDurationSeconds"].Basic.Value)
+	activityDurationSeconds := int32(report.Entries[0].Values["activityDurationSeconds"].Basic.Value)
 	endTime := startTime.Add(time.Second * time.Duration(activityDurationSeconds))
 
 	entity.StartTime = startTime
 	entity.EndTime = endTime
 
-	instanceId, err := strconv.ParseInt(pgcr.ActivityDetails.InstanceId, 10, 64)
+	instanceId, err := strconv.ParseInt(report.ActivityDetails.InstanceId, 10, 64)
 	if err != nil {
-		slog.Error("Unable to convert instanceIdto int64 for some reason?", "InstanceId", pgcr.ActivityDetails.InstanceId)
+		slog.Error("Unable to convert instanceIdto int64 for some reason?", "InstanceId", report.ActivityDetails.InstanceId)
 		return nil, err
 	}
 
 	entity.InstanceId = instanceId
-	entity.ActivityHash = pgcr.ActivityDetails.ActivityHash
+	entity.ActivityHash = report.ActivityDetails.ActivityHash
 
-	activitiyHash := pgcr.ActivityDetails.ActivityHash
+	activitiyHash := report.ActivityDetails.ActivityHash
 	manifestResponse, err := redisService.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
 	if err != nil {
 		slog.Error("Unable to find activity hash in Redis", "ActivityHash", activitiyHash, "Error", err)
@@ -101,8 +102,8 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) 
 	entity.RaidName = raidName
 	entity.RaidDifficulty = raidDifficulty
 
-	playersGrouped := make(map[int64][]types.PostGameCarnageReportEntry)
-	for _, entry := range pgcr.Entries {
+	playersGrouped := make(map[int64][]pgcr.PostGameCarnageReportEntry)
+	for _, entry := range report.Entries {
 		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
 			slog.Error("Something went wrong when parsing membership ID to Int64", "MembershipId", entry.Player.DestinyUserInfo.MembershipId)
@@ -112,7 +113,7 @@ func processPgcr(pgcr *types.PostGameCarnageReport, redisService redis.Service) 
 		if ok {
 			playersGrouped[membershipId] = append(val, entry)
 		} else {
-			playersGrouped[membershipId] = []types.PostGameCarnageReportEntry{entry}
+			playersGrouped[membershipId] = []pgcr.PostGameCarnageReportEntry{entry}
 		}
 	}
 
@@ -136,7 +137,7 @@ Outerloop:
 		}
 	}
 
-	fresh, err := resolveFromBeginning(pgcr, flawless)
+	fresh, err := resolveFromBeginning(report, flawless)
 	if err != nil {
 		slog.Error("Error parsing StartTime when determining if PGCRis fresh", "InstanceId", instanceId, "Error", err)
 		return nil, err
@@ -156,15 +157,15 @@ Outerloop:
 
 // Takes in a map of grouped up PGCR entries by players' membershipIds and returns an array of PlayerInformation structs
 // Ensures that each player will have all their characters respectively
-func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntry) ([]types.PlayerData, error) {
-	result := []types.PlayerData{}
+func processPlayerInformation(groups map[int64][]pgcr.PostGameCarnageReportEntry) ([]rabbitmq.PlayerData, error) {
+	result := []rabbitmq.PlayerData{}
 	for membershipId, entries := range groups {
 		if len(entries) == 0 {
 			slog.Info("Player with membershipId has no entries, skipping", "MembershipId", membershipId)
 			continue
 		}
 
-		playerInfo := types.PlayerData{
+		playerInfo := rabbitmq.PlayerData{
 			MembershipId:          membershipId,
 			MembershipType:        entries[0].Player.DestinyUserInfo.MembershipType,
 			DisplayName:           entries[0].Player.DestinyUserInfo.DisplayName,
@@ -204,13 +205,13 @@ func processPlayerInformation(groups map[int64][]types.PostGameCarnageReportEntr
 // Create an individual player character info struct based on a PGCR entry
 // This utilizes Redis to fetch several pre-indexed manifest objects
 // If querying Redis fails then this method return an error
-func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.PlayerCharacterInformation, error) {
-	characterInfo := types.PlayerCharacterInformation{
+func createPlayerCharacter(entry *pgcr.PostGameCarnageReportEntry) (*rabbitmq.PlayerCharacterInformation, error) {
+	characterInfo := rabbitmq.PlayerCharacterInformation{
 		ActivityCompleted: entry.Values["completed"].Basic.Value == 1.0,
-		WeaponInformation: []types.CharacterWeaponInformation{}, // empty just in case the player didn't do anything in the activity
+		WeaponInformation: []rabbitmq.CharacterWeaponInformation{}, // empty just in case the player didn't do anything in the activity
 	}
 
-	class := types.CharacterClass(entry.Player.CharacterClass)
+	class := rabbitmq.CharacterClass(entry.Player.CharacterClass)
 
 	characterId, err := strconv.ParseInt(entry.CharacterId, 10, 64)
 	if err != nil {
@@ -232,7 +233,7 @@ func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.Play
 	// Set weapon information
 	if entry.Extended != nil {
 		for _, weapon := range entry.Extended.Weapons {
-			w := types.CharacterWeaponInformation{
+			w := rabbitmq.CharacterWeaponInformation{
 				WeaponHash:     weapon.ReferenceId,
 				Kills:          int(weapon.Values["uniqueWeaponKills"].Basic.Value),
 				PrecisionKills: int(weapon.Values["uniqueWeaponPrecisionKills"].Basic.Value),
@@ -242,7 +243,7 @@ func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.Play
 		}
 
 		// Set ability information
-		abilityInfo := types.CharacterAbilityInformation{
+		abilityInfo := rabbitmq.CharacterAbilityInformation{
 			GrenadeKills: int(entry.Extended.Abilities["weaponKillsGrenade"].Basic.Value),
 			MeleeKills:   int(entry.Extended.Abilities["weaponKillsMelee"].Basic.Value),
 			SuperKills:   int(entry.Extended.Abilities["weaponKillsSuper"].Basic.Value),
@@ -253,7 +254,7 @@ func createPlayerCharacter(entry *types.PostGameCarnageReportEntry) (*types.Play
 }
 
 // Resolves if a raid was fresh or not, courtesy of @Newo
-func resolveFromBeginning(pgcr *types.PostGameCarnageReport, flawless bool) (*bool, error) {
+func resolveFromBeginning(pgcr *pgcr.PostGameCarnageReport, flawless bool) (*bool, error) {
 	var result *bool = new(bool)
 
 	startTime, err := time.Parse(time.RFC3339, pgcr.Period)

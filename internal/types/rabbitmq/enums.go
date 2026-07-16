@@ -1,4 +1,4 @@
-package types
+package rabbitmq
 
 type CharacterClass string
 

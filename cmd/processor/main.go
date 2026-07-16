@@ -12,10 +12,10 @@ import (
 	"pgcr-processing-service/internal/processing"
 	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/redis"
+	rabbitmq1 "pgcr-processing-service/internal/types/rabbitmq"
 )
 
 var (
-	rabbitMQUrl = "amqp://rabbitmq:5672"
 	postgresUrl = "postgres://%s:%s@postgres:5432/postgres?sslmode=disable"
 	redisUrl    = "redis:6379"
 	goroutines  = 100
@@ -24,7 +24,7 @@ var (
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGQUIT)
 	defer cancel()
-	rabbitmq, err := rabbitmq.Connect("rivenbot_pgcr", rabbitMQUrl)
+	rabbitmq, err := rabbitmq.Connect(rabbitmq1.RabbitQueueName, rabbitmq1.RabbitMQUrl)
 	if err != nil {
 		slog.Error("Error happened while connecting to RabbitMQ", "error", err)
 		os.Exit(1)

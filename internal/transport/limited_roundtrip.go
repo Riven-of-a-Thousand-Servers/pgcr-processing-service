@@ -1,16 +1,16 @@
-package net
+package transport
 
 import (
 	"io"
 	"net/http"
 )
 
-type maxSizeTransport struct {
+type MaxSizeTransport struct {
 	MaxSize int64
 	Base    http.RoundTripper
 }
 
-func (t *maxSizeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *MaxSizeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.Base.RoundTrip(req)
 	if err != nil {
 		return nil, err
