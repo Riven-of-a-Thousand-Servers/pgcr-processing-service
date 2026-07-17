@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	goroutines = 50
+	goroutines = 2
 	apiKey     = "27fd2725658c431992b1b0259682ad3c"
 )
 
@@ -38,10 +38,12 @@ func main() {
 			Base:    http.DefaultTransport,
 			MaxSize: net.MAX_REQUEST_SIZE_KB,
 		},
+		Timeout: 10 * time.Second,
 	}
 
 	var wg sync.WaitGroup
 	tick := time.NewTicker(10 * time.Second)
+	defer tick.Stop()
 
 	wg.Add(1)
 	in := make(chan int64, 100)

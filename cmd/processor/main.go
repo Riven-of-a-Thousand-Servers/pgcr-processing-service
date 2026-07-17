@@ -18,7 +18,7 @@ import (
 var (
 	postgresUrl = "postgres://%s:%s@postgres:5432/postgres?sslmode=disable"
 	redisUrl    = "redis:6379"
-	goroutines  = 100
+	goroutines  = 5
 )
 
 func main() {

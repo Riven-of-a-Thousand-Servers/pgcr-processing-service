@@ -2,7 +2,6 @@ package crawling
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,7 +9,6 @@ import (
 	"strconv"
 
 	"pgcr-processing-service/internal/rabbitmq"
-	"pgcr-processing-service/internal/types/pgcr"
 
 	"github.com/rabbitmq/amqp091-go"
 )
@@ -33,6 +31,7 @@ func NewPgcrCrawler(rabbitmq *rabbitmq.RabbitMQ, client *http.Client, gen <-chan
 		Rabbitmq: rabbitmq,
 		Client:   client,
 		In:       gen,
+		MaxSize:  maxSize,
 	}
 }
 
@@ -48,8 +47,12 @@ func (c *PgcrCrawler) Crawl(ctx context.Context, id int64, apiKey string) {
 		case <-ctx.Done():
 			slog.Info("Crawler instance shutting down", "workerId", id)
 			return
-		case next := <-c.In:
-			slog.Info("Worker processing pgcr", "workerId", id)
+		case next, ok := <-c.In:
+			if !ok {
+				slog.Info("Input channel closed. Exiting", "workerId", id)
+				return
+			}
+			slog.Info("Worker processing pgcr", "workerId", id, "pgcr", next)
 			url := fmt.Sprintf(baseUrl, next)
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 			if err != nil {
@@ -65,8 +68,9 @@ func (c *PgcrCrawler) Crawl(ctx context.Context, id int64, apiKey string) {
 			}
 
 			// Stop if there's errors reading HTTP bodies from requests
-			var data []byte
-			if _, err = io.ReadAll(res.Body); err != nil {
+			data, err := io.ReadAll(res.Body)
+			res.Body.Close()
+			if err != nil {
 				slog.Error("Error reading response body", "error", err)
 				return
 			}
@@ -77,13 +81,6 @@ func (c *PgcrCrawler) Crawl(ctx context.Context, id int64, apiKey string) {
 				continue
 			}
 
-			var pgcr pgcr.PostGameCarnageReportResponse
-			err = json.NewDecoder(res.Body).Decode(&pgcr)
-			if err != nil {
-				slog.Error("Error decoding pgcr", "pgcr", next, "error", err)
-				continue
-			}
-
 			publishing := amqp091.Publishing{
 				MessageId: strconv.FormatInt(next, 10),
 				Headers: map[string]any{
@@ -91,10 +88,14 @@ func (c *PgcrCrawler) Crawl(ctx context.Context, id int64, apiKey string) {
 				},
 				ContentType:     "application/json",
 				ContentEncoding: "utf-8",
+				Body:            data,
 			}
+
 			if err := ch.PublishWithContext(ctx, "", c.Rabbitmq.Queue.Name, false, false, publishing); err != nil {
 				slog.Error("Unable to publish message", "messageId", next, "crawlerId", id)
 			}
+
+			slog.Info("Successfully published pgcr", "pgcr", next, "json", string(data))
 		}
 	}
 }
