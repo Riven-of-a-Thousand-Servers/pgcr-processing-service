@@ -7,15 +7,22 @@ import (
 	"strconv"
 	"time"
 
+	"pgcr-processing-service/internal/cache"
 	"pgcr-processing-service/internal/compress"
-	"pgcr-processing-service/internal/redis"
+	"pgcr-processing-service/internal/types/manifest"
 	"pgcr-processing-service/internal/types/pgcr"
 	"pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
 )
 
 type PgcrMapper struct {
-	ManifestClient redis.Service
+	cache cache.Service[manifest.ManifestObject]
+}
+
+func NewMapper(cache cache.Service[manifest.ManifestObject]) *PgcrMapper {
+	return &PgcrMapper{
+		cache: cache,
+	}
 }
 
 const (
@@ -43,7 +50,7 @@ var leviHashes = map[int64]bool{
 // This method maps the PGCR into a pre-processed format thats more suitable for features
 // Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
 func (p *PgcrMapper) ToProcessedPgcr(pgcr *pgcr.PostGameCarnageReport) ([]byte, *rabbitmq.ProcessedPostGameCarnageReport, error) {
-	processedPgcr, err := processPgcr(pgcr, p.ManifestClient)
+	processedPgcr, err := processPgcr(pgcr, p.cache)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,7 +63,7 @@ func (p *PgcrMapper) ToProcessedPgcr(pgcr *pgcr.PostGameCarnageReport) ([]byte, 
 	return compressed, processedPgcr, nil
 }
 
-func processPgcr(report *pgcr.PostGameCarnageReport, redisService redis.Service) (*rabbitmq.ProcessedPostGameCarnageReport, error) {
+func processPgcr(report *pgcr.PostGameCarnageReport, redisService cache.Service[manifest.ManifestObject]) (*rabbitmq.ProcessedPostGameCarnageReport, error) {
 	var entity rabbitmq.ProcessedPostGameCarnageReport
 
 	// Calculate start and end time
@@ -87,7 +94,7 @@ func processPgcr(report *pgcr.PostGameCarnageReport, redisService redis.Service)
 	entity.ActivityHash = report.ActivityDetails.ActivityHash
 
 	activitiyHash := report.ActivityDetails.ActivityHash
-	manifestResponse, err := redisService.GetManifestEntity(context.Background(), strconv.Itoa(int(activitiyHash)))
+	manifestResponse, err := redisService.Get(context.Background(), "DestinyActivityDefinition", strconv.Itoa(int(activitiyHash)))
 	if err != nil {
 		slog.Error("Unable to find activity hash in Redis", "ActivityHash", activitiyHash, "Error", err)
 		return nil, err

@@ -1,0 +1,48 @@
+package bungie
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+
+	"pgcr-processing-service/internal/cache"
+)
+
+var (
+	manifestUrl  = "https://www.bungie.net/Platform/Destiny2/Manifest/%s/%s/"
+	apiKeyHeader = "x-api-key"
+)
+
+func BungieManifestFetcher[T any](client *http.Client, apiKey string) cache.Fetcher[T] {
+	return func(ctx context.Context, entity, key string) (T, error) {
+		var zero T
+
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(manifestUrl, entity, key), nil)
+		if err != nil {
+			return zero, err
+		}
+
+		req.Header.Add(apiKeyHeader, apiKey)
+		req.Header.Add("content-type", "application/json")
+
+		res, err := client.Do(req)
+		if err != nil {
+			return zero, err
+		}
+		defer res.Body.Close()
+
+		data, err := io.ReadAll(res.Body)
+		if err != nil {
+			return zero, err
+		}
+
+		var manifestResponse T
+		if err := json.Unmarshal(data, &manifestResponse); err != nil {
+			return zero, err
+		}
+
+		return manifestResponse, nil
+	}
+}

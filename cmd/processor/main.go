@@ -3,16 +3,23 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"pgcr-processing-service/internal/bungie"
+	"pgcr-processing-service/internal/cache"
 	"pgcr-processing-service/internal/db"
+	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/processing"
 	"pgcr-processing-service/internal/rabbitmq"
-	"pgcr-processing-service/internal/redis"
+	"pgcr-processing-service/internal/types/manifest"
 	rabbitmq1 "pgcr-processing-service/internal/types/rabbitmq"
+
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -44,10 +51,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	redis := redis.NewService(redisUrl)
-	defer redis.Client.Close()
+	redis := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "",
+		DB:       0,
+		Protocol: 2,
+	})
+	defer redis.Close()
 
-	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, redis)
+	cacheService := cache.NewService(redis, 12*time.Hour, bungie.BungieManifestFetcher[manifest.ManifestObject](http.DefaultClient, ""))
+	mapper := mapper.NewMapper(cacheService)
+	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, mapper, cacheService)
 
 	var wg sync.WaitGroup
 	for i := range goroutines {

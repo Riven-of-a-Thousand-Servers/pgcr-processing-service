@@ -10,10 +10,11 @@ import (
 	"strconv"
 	"time"
 
+	"pgcr-processing-service/internal/cache"
 	"pgcr-processing-service/internal/db"
 	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/rabbitmq"
-	"pgcr-processing-service/internal/redis"
+	"pgcr-processing-service/internal/types/manifest"
 	"pgcr-processing-service/internal/types/pgcr"
 	types "pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
@@ -59,24 +60,25 @@ type Processor interface {
 }
 
 type PgcrProcessor struct {
-	DB         *sql.DB
-	Queries    *db.Queries
-	RabbitMq   *rabbitmq.RabbitMQ
-	PgcrMapper mapper.PgcrMapper
-	Redis      redis.Service
+	db       *sql.DB
+	queries  *db.Queries
+	rabbitmq *rabbitmq.RabbitMQ
+	mapper   *mapper.PgcrMapper
+	cache    cache.Service[manifest.ManifestObject]
 }
 
-func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, redis redis.Service) *PgcrProcessor {
+func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, mapper *mapper.PgcrMapper, redis cache.Service[manifest.ManifestObject]) *PgcrProcessor {
 	return &PgcrProcessor{
-		DB:       db,
-		Queries:  queries,
-		RabbitMq: rabbitmq,
-		Redis:    redis,
+		db:       db,
+		queries:  queries,
+		rabbitmq: rabbitmq,
+		mapper:   mapper,
+		cache:    redis,
 	}
 }
 
 func (p *PgcrProcessor) StartWork(ctx context.Context, id int) error {
-	d, ch, err := p.RabbitMq.Consumer(ctx, fmt.Sprintf("pgcr_consumer_%d", id))
+	d, ch, err := p.rabbitmq.Consumer(ctx, fmt.Sprintf("pgcr_consumer_%d", id))
 	if err != nil {
 		return err
 	}
@@ -109,7 +111,7 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 	instanceId64, _ := strconv.ParseInt(instanceId, 10, 64)
 
 	slog.Info("Processing pgcr", "InstanceId", instanceId)
-	b, processedPgcr, err := p.PgcrMapper.ToProcessedPgcr(&pgcr.Response)
+	b, processedPgcr, err := p.mapper.ToProcessedPgcr(&pgcr.Response)
 	if err != nil {
 		slog.Error("Error mapping pgcr to a processed pgcr", "instanceId", instanceId, "error", err)
 		delivery.Nack(false, false)
@@ -123,7 +125,7 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 		return
 	}
 
-	tx, err := p.DB.BeginTx(ctx, nil)
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		slog.Error("Failed to begin transaction", "error", err)
 		delivery.Nack(false, true)
@@ -131,7 +133,7 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 	}
 	defer tx.Rollback()
 
-	qtx := p.Queries.WithTx(tx)
+	qtx := p.queries.WithTx(tx)
 	err = p.DoPgcr(ctx, qtx, processedPgcr, source, b)
 	if err != nil {
 		if markErr := p.LedgerMarkError(ctx, instanceId64, err); markErr != nil {
@@ -160,7 +162,7 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 }
 
 func (p *PgcrProcessor) LedgerMarkSuccess(ctx context.Context, instanceId int64) error {
-	return p.Queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
+	return p.queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
 		InstanceID: instanceId,
 		Status:     statuses[success],
 		Error:      sql.NullString{Valid: false},
@@ -168,7 +170,7 @@ func (p *PgcrProcessor) LedgerMarkSuccess(ctx context.Context, instanceId int64)
 }
 
 func (p *PgcrProcessor) LedgerMarkError(ctx context.Context, instanceId int64, cause error) error {
-	return p.Queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
+	return p.queries.UpdateLogEntryStatus(ctx, db.UpdateLogEntryStatusParams{
 		InstanceID: instanceId,
 		Status:     statuses[errored],
 		Error:      sql.NullString{String: cause.Error(), Valid: cause.Error() != ""},
@@ -178,7 +180,7 @@ func (p *PgcrProcessor) LedgerMarkError(ctx context.Context, instanceId int64, c
 // Saves a processed pgcr to the Postgres DB
 func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types.ProcessedPostGameCarnageReport, source Source, b []byte) error {
 	// If inserting to the ledger fails, skip inserting to the DB
-	entry, err := p.Queries.UpsertLogEntry(ctx, db.UpsertLogEntryParams{
+	entry, err := p.queries.UpsertLogEntry(ctx, db.UpsertLogEntryParams{
 		InstanceID: pgcr.InstanceId,
 		Source:     sources[source],
 		Status:     statuses[processing],
@@ -203,7 +205,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 		}
 	}
 
-	if err := p.Queries.CreateInstance(ctx, db.CreateInstanceParams{
+	if err := p.queries.CreateInstance(ctx, db.CreateInstanceParams{
 		ID:              pgcr.InstanceId,
 		ActivityHash:    pgcr.ActivityHash,
 		IsFresh:         pgcr.FromBeginning,
@@ -217,7 +219,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 		return err
 	}
 
-	if err := p.Queries.CreatePgcr(ctx, db.CreatePgcrParams{
+	if err := p.queries.CreatePgcr(ctx, db.CreatePgcrParams{
 		InstanceID: pgcr.InstanceId,
 		Blob:       b,
 	}); err != nil {
@@ -247,14 +249,14 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 			}
 		}
 
-		_, err := p.Queries.CreateDestinyPlayer(ctx, player)
+		_, err := p.queries.CreateDestinyPlayer(ctx, player)
 		if err != nil {
 			slog.Error("Failed to save destiny player", "instanceId", pgcr.InstanceId, "membershipId", player.MembershipID, "membershipType", player.MembershipType)
 			return err
 		}
 
 		// InstancePlayer
-		err = p.Queries.CreateInstancePlayer(ctx, db.CreateInstancePlayerParams{
+		err = p.queries.CreateInstancePlayer(ctx, db.CreateInstancePlayerParams{
 			InstanceID:        pgcr.InstanceId,
 			MembershipID:      pi.MembershipId,
 			Completed:         sql.NullBool{Bool: pi.Completed},
@@ -264,7 +266,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 		switch {
 		case err == nil:
 			isFullClear := pgcr.FromBeginning && pi.Completed
-			if err := p.Queries.IncrementPlayerCounts(ctx, db.IncrementPlayerCountsParams{
+			if err := p.queries.IncrementPlayerCounts(ctx, db.IncrementPlayerCountsParams{
 				MembershipID: pi.MembershipId,
 				Column2:      pi.Completed,
 				Column3:      isFullClear,
@@ -282,7 +284,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 
 		// InstanceCharacter
 		for _, ci := range pi.PlayerCharacterInformation {
-			if err := p.Queries.CreateInstanceCharacter(ctx, db.CreateInstanceCharacterParams{
+			if err := p.queries.CreateInstanceCharacter(ctx, db.CreateInstanceCharacterParams{
 				InstanceID:   pgcr.InstanceId,
 				MembershipID: pi.MembershipId,
 				CharacterID:  ci.CharacterId,
@@ -305,13 +307,13 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 			for _, ciw := range ci.WeaponInformation {
 				// Weapons
 				strHash := strconv.FormatInt(ciw.WeaponHash, 10)
-				manifestEntity, err := p.Redis.GetManifestEntity(ctx, strHash)
+				manifestEntity, err := p.cache.Get(ctx, "DestinyInventoryItemDefinition", strHash)
 				if err != nil {
 					slog.Error("Unable to fetch manifest entity", "Hash", ciw.WeaponHash, "Error", err)
 					continue
 				}
 
-				if err := p.Queries.CreateWeapon(ctx, db.CreateWeaponParams{
+				if err := p.queries.CreateWeapon(ctx, db.CreateWeaponParams{
 					WeaponHash:    ciw.WeaponHash,
 					IconUrl:       manifestEntity.DisplayProperties.Icon,
 					WeaponName:    manifestEntity.DisplayProperties.Name,
@@ -323,7 +325,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 				}
 
 				// InstanceCharacterWeapons
-				if err := p.Queries.CreateInstanceCharacterWeapon(ctx, db.CreateInstanceCharacterWeaponParams{
+				if err := p.queries.CreateInstanceCharacterWeapon(ctx, db.CreateInstanceCharacterWeaponParams{
 					InstanceID:         pgcr.InstanceId,
 					PlayerMembershipID: pi.MembershipId,
 					PlayerCharacterID:  ci.CharacterId,
