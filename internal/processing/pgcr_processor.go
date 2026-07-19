@@ -107,6 +107,15 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 		delivery.Nack(false, false)
 	}
 
+	// Only process raid activity
+	if pgcr.Response.ActivityDetails.Mode != 4 {
+		instanceId := pgcr.Response.ActivityDetails.InstanceId
+		mode := pgcr.Response.ActivityDetails.Mode
+		slog.Info("Pgcr is not a raid", "pgcr", instanceId, "mode", mode)
+		delivery.Ack(false)
+		return
+	}
+
 	instanceId := pgcr.Response.ActivityDetails.InstanceId
 	instanceId64, _ := strconv.ParseInt(instanceId, 10, 64)
 
