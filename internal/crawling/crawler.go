@@ -95,7 +95,7 @@ func (c *PgcrCrawler) Crawl(ctx context.Context, id int64, apiKey string) {
 				slog.Error("Unable to publish message", "messageId", next, "crawlerId", id)
 			}
 
-			slog.Info("Successfully published pgcr", "pgcr", next, "json", string(data))
+			slog.Info("Successfully published pgcr", "pgcr", next)
 		}
 	}
 }

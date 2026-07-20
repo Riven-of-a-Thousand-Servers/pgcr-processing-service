@@ -1,7 +1,7 @@
 package manifest
 
-type ManifestObject struct {
-	Mode                      int               `json:"directActivityModeType"` // Using *int to handle nil values
+type ManifestEntry struct {
+	Mode                      int               `json:"directActivityModeType"`
 	DisplayProperties         DisplayProperties `json:"displayProperties"`
 	OriginalDisplayProperties DisplayProperties `json:"originalDisplayProperties"`
 	ReleaseIcon               string            `json:"releaseIcon"`

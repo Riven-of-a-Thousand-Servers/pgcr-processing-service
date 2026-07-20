@@ -2,69 +2,41 @@ package mapper
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 
 	"pgcr-processing-service/internal/cache"
-	"pgcr-processing-service/internal/compress"
 	"pgcr-processing-service/internal/types/manifest"
 	"pgcr-processing-service/internal/types/pgcr"
-	"pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
 )
 
 type PgcrMapper struct {
-	cache cache.Service[manifest.ManifestObject]
+	cache cache.Service[manifest.ManifestEntry]
 }
 
-func NewMapper(cache cache.Service[manifest.ManifestObject]) *PgcrMapper {
+func NewMapper(cache cache.Service[manifest.ManifestEntry]) *PgcrMapper {
 	return &PgcrMapper{
 		cache: cache,
 	}
 }
 
 const (
-	sotpHash1   int64  = 548750096
-	sotpHash2   int64  = 2812525063
 	pstTimezone string = "America/Los_Angeles"
 )
 
-var (
-	beyondLightStart = time.Date(2020, time.November, 10, 9, 0, 0, 0, time.FixedZone("PST", -8*60*60))
-	witchQueenStart  = time.Date(2022, time.February, 22, 9, 0, 0, 0, time.FixedZone("PST", -8*60*60))
-	hauntedStart     = time.Date(2022, time.May, 24, 10, 0, 0, 0, time.FixedZone("PDT", -7*60*60))
-)
-
-var leviHashes = map[int64]bool{
-	2693136600: true, 2693136601: true, 2693136602: true,
-	2693136603: true, 2693136604: true, 2693136605: true,
-	89727599: true, 287649202: true, 1699948563: true, 1875726950: true,
-	3916343513: true, 4039317196: true, 417231112: true, 508802457: true,
-	757116822: true, 771164842: true, 1685065161: true, 1800508819: true,
-	2449714930: true, 3446541099: true, 4206123728: true, 3912437239: true,
-	3879860661: true, 3857338478: true,
+func (m *PgcrMapper) ExtractInfo(report *pgcr.PostGameCarnageReport) (*pgcr.PgcrInfo, error) {
+	enriched, err := m.enrichPgcrInfo(report)
+	if err != nil {
+		return nil, err
+	}
+	return enriched, nil
 }
 
-// This method maps the PGCR into a pre-processed format thats more suitable for features
-// Additionally, it compresses the raw PGCR fetched from Bungie and returns them if the compression is successful
-func (p *PgcrMapper) ToProcessedPgcr(pgcr *pgcr.PostGameCarnageReport) ([]byte, *rabbitmq.ProcessedPostGameCarnageReport, error) {
-	processedPgcr, err := processPgcr(pgcr, p.cache)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	compressed, err := compress.Gzip(pgcr)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return compressed, processedPgcr, nil
-}
-
-func processPgcr(report *pgcr.PostGameCarnageReport, redisService cache.Service[manifest.ManifestObject]) (*rabbitmq.ProcessedPostGameCarnageReport, error) {
-	var entity rabbitmq.ProcessedPostGameCarnageReport
+func (p *PgcrMapper) enrichPgcrInfo(report *pgcr.PostGameCarnageReport) (*pgcr.PgcrInfo, error) {
+	var entity pgcr.PgcrInfo
 
 	// Calculate start and end time
 	startTime, err := time.Parse(time.RFC3339, report.Period)
@@ -74,12 +46,16 @@ func processPgcr(report *pgcr.PostGameCarnageReport, redisService cache.Service[
 	}
 
 	if len(report.Entries) == 0 {
-		error := fmt.Errorf("No entries in the PGCR [%s], unable to determine the end time of the activity", report.ActivityDetails.InstanceId)
-		return nil, error
+		slog.Warn("No entries pgcr. Unable to determine activity duration", "pgcr", report.ActivityDetails.InstanceId)
 	}
 
-	activityDurationSeconds := int32(report.Entries[0].Values["activityDurationSeconds"].Basic.Value)
-	endTime := startTime.Add(time.Second * time.Duration(activityDurationSeconds))
+	// Get the max duration value for all players
+	var maxDuration float64 = 0
+	for _, e := range report.Entries {
+		maxDuration = math.Max(float64(maxDuration), float64(e.Values.ActivityDurationSeconds))
+	}
+
+	endTime := startTime.Add(time.Second * time.Duration(maxDuration))
 
 	entity.StartTime = startTime
 	entity.EndTime = endTime
@@ -92,9 +68,9 @@ func processPgcr(report *pgcr.PostGameCarnageReport, redisService cache.Service[
 
 	entity.InstanceId = instanceId
 	entity.ActivityHash = report.ActivityDetails.ActivityHash
-
 	activitiyHash := report.ActivityDetails.ActivityHash
-	manifestResponse, err := redisService.Get(context.Background(), "DestinyActivityDefinition", strconv.Itoa(int(activitiyHash)))
+
+	manifestResponse, err := p.cache.Get(context.Background(), "DestinyActivityDefinition", strconv.FormatInt(activitiyHash, 10))
 	if err != nil {
 		slog.Error("Unable to find activity hash in Redis", "ActivityHash", activitiyHash, "Error", err)
 		return nil, err
@@ -109,35 +85,31 @@ func processPgcr(report *pgcr.PostGameCarnageReport, redisService cache.Service[
 	entity.RaidName = raidName
 	entity.RaidDifficulty = raidDifficulty
 
-	playersGrouped := make(map[int64][]pgcr.PostGameCarnageReportEntry)
+	groupedPlayers := make(map[int64][]pgcr.StatsEntry)
 	for _, entry := range report.Entries {
 		membershipId, err := strconv.ParseInt(entry.Player.DestinyUserInfo.MembershipId, 10, 64)
 		if err != nil {
 			slog.Error("Something went wrong when parsing membership ID to Int64", "MembershipId", entry.Player.DestinyUserInfo.MembershipId)
 			return nil, err
 		}
-		val, ok := playersGrouped[membershipId]
+		val, ok := groupedPlayers[membershipId]
 		if ok {
-			playersGrouped[membershipId] = append(val, entry)
+			groupedPlayers[membershipId] = append(val, entry)
 		} else {
-			playersGrouped[membershipId] = []pgcr.PostGameCarnageReportEntry{entry}
+			groupedPlayers[membershipId] = []pgcr.StatsEntry{entry}
 		}
 	}
 
-	// Process player information
-	playerInformation, err := processPlayerInformation(playersGrouped)
-	if err != nil {
+	if entity.PlayerInfo, err = processPlayers(groupedPlayers); err != nil {
 		return nil, err
 	}
-
-	entity.PlayerInformation = playerInformation
 
 	flawless := true
 
 Outerloop:
-	for _, players := range playersGrouped {
+	for _, players := range groupedPlayers {
 		for _, player := range players {
-			if player.Values["deaths"].Basic.Value > 0 {
+			if player.Values.Deaths > 0.0 {
 				flawless = false
 				break Outerloop
 			}
@@ -146,13 +118,13 @@ Outerloop:
 
 	fresh, err := resolveFromBeginning(report, flawless)
 	if err != nil {
-		slog.Error("Error parsing StartTime when determining if PGCRis fresh", "InstanceId", instanceId, "Error", err)
+		slog.Error("Failed to determine if PGCR is fresh", "InstanceId", instanceId, "Error", err)
 		return nil, err
 	}
 
-	trio := len(playersGrouped) == 3
-	duo := len(playersGrouped) == 2
-	solo := len(playersGrouped) == 1
+	trio := len(groupedPlayers) == 3
+	duo := len(groupedPlayers) == 2
+	solo := len(groupedPlayers) == 1
 
 	entity.Trio = trio
 	entity.Duo = duo
@@ -164,15 +136,15 @@ Outerloop:
 
 // Takes in a map of grouped up PGCR entries by players' membershipIds and returns an array of PlayerInformation structs
 // Ensures that each player will have all their characters respectively
-func processPlayerInformation(groups map[int64][]pgcr.PostGameCarnageReportEntry) ([]rabbitmq.PlayerData, error) {
-	result := []rabbitmq.PlayerData{}
+func processPlayers(groups map[int64][]pgcr.StatsEntry) ([]pgcr.PlayerInfo, error) {
+	result := []pgcr.PlayerInfo{}
 	for membershipId, entries := range groups {
 		if len(entries) == 0 {
 			slog.Info("Player with membershipId has no entries, skipping", "MembershipId", membershipId)
 			continue
 		}
 
-		playerInfo := rabbitmq.PlayerData{
+		playerInfo := pgcr.PlayerInfo{
 			MembershipId:          membershipId,
 			MembershipType:        entries[0].Player.DestinyUserInfo.MembershipType,
 			DisplayName:           entries[0].Player.DestinyUserInfo.DisplayName,
@@ -188,10 +160,10 @@ func processPlayerInformation(groups map[int64][]pgcr.PostGameCarnageReportEntry
 				slog.Error("There was an error create character information for player with Id", "MembershipId", membershipId, "Error", err)
 				return nil, err
 			}
-			playerInfo.PlayerCharacterInformation = append(playerInfo.PlayerCharacterInformation, *characterInfo)
+			playerInfo.CharacterInfo = append(playerInfo.CharacterInfo, *characterInfo)
 		}
 
-		for _, c := range playerInfo.PlayerCharacterInformation {
+		for _, c := range playerInfo.CharacterInfo {
 			if c.ActivityCompleted {
 				playerInfo.Completed = true
 				break
@@ -199,7 +171,7 @@ func processPlayerInformation(groups map[int64][]pgcr.PostGameCarnageReportEntry
 		}
 
 		totalTimePlayed := 0
-		for _, c := range playerInfo.PlayerCharacterInformation {
+		for _, c := range playerInfo.CharacterInfo {
 			totalTimePlayed += c.TimePlayedSeconds
 		}
 		playerInfo.TimePlayedSeconds = int32(totalTimePlayed)
@@ -209,16 +181,16 @@ func processPlayerInformation(groups map[int64][]pgcr.PostGameCarnageReportEntry
 	return result, nil
 }
 
-// Create an individual player character info struct based on a PGCR entry
+// Create an individual player character info struct based on a stats entry
 // This utilizes Redis to fetch several pre-indexed manifest objects
 // If querying Redis fails then this method return an error
-func createPlayerCharacter(entry *pgcr.PostGameCarnageReportEntry) (*rabbitmq.PlayerCharacterInformation, error) {
-	characterInfo := rabbitmq.PlayerCharacterInformation{
-		ActivityCompleted: entry.Values["completed"].Basic.Value == 1.0,
-		WeaponInformation: []rabbitmq.CharacterWeaponInformation{}, // empty just in case the player didn't do anything in the activity
+func createPlayerCharacter(entry *pgcr.StatsEntry) (*pgcr.CharacterInfo, error) {
+	characterInfo := pgcr.CharacterInfo{
+		ActivityCompleted: entry.Values.Completed == 1.0,
+		WeaponInformation: []pgcr.WeaponInfo{}, // empty just in case the player didn't do anything in the activity
 	}
 
-	class := rabbitmq.CharacterClass(entry.Player.CharacterClass)
+	class := pgcr.CharacterClass(entry.Player.CharacterClass)
 
 	characterId, err := strconv.ParseInt(entry.CharacterId, 10, 64)
 	if err != nil {
@@ -230,30 +202,30 @@ func createPlayerCharacter(entry *pgcr.PostGameCarnageReportEntry) (*rabbitmq.Pl
 	characterInfo.LightLevel = entry.Player.LightLevel
 	characterInfo.CharacterClass = class
 	characterInfo.CharacterEmblem = entry.Player.EmblemHash
-	characterInfo.TimePlayedSeconds = int(entry.Values["timePlayedSeconds"].Basic.Value)
-	characterInfo.Kills = int(entry.Values["kills"].Basic.Value)
-	characterInfo.Deaths = int(entry.Values["deaths"].Basic.Value)
-	characterInfo.Assists = int(entry.Values["assists"].Basic.Value)
-	characterInfo.Kda = entry.Values["killsDeathsAssists"].Basic.Value
-	characterInfo.Kdr = entry.Values["killsDeathsRatio"].Basic.Value
+	characterInfo.TimePlayedSeconds = int(entry.Values.TimePlayedSeconds)
+	characterInfo.Kills = int(entry.Values.Kills)
+	characterInfo.Deaths = int(entry.Values.Deaths)
+	characterInfo.Assists = int(entry.Values.Assists)
+	characterInfo.Kda = float64(entry.Values.Kda)
+	characterInfo.Kdr = float64(entry.Values.Kdr)
 
 	// Set weapon information
 	if entry.Extended != nil {
 		for _, weapon := range entry.Extended.Weapons {
-			w := rabbitmq.CharacterWeaponInformation{
+			w := pgcr.WeaponInfo{
 				WeaponHash:     weapon.ReferenceId,
-				Kills:          int(weapon.Values["uniqueWeaponKills"].Basic.Value),
-				PrecisionKills: int(weapon.Values["uniqueWeaponPrecisionKills"].Basic.Value),
-				PrecisionRatio: weapon.Values["uniqueWeaponKillsPrecisionKills"].Basic.Value,
+				Kills:          int(weapon.Values.WeaponKills),
+				PrecisionKills: int(weapon.Values.PrecisionKills),
+				PrecisionRatio: float64(weapon.Values.PrecisionRatio),
 			}
 			characterInfo.WeaponInformation = append(characterInfo.WeaponInformation, w)
 		}
 
 		// Set ability information
-		abilityInfo := rabbitmq.CharacterAbilityInformation{
-			GrenadeKills: int(entry.Extended.Abilities["weaponKillsGrenade"].Basic.Value),
-			MeleeKills:   int(entry.Extended.Abilities["weaponKillsMelee"].Basic.Value),
-			SuperKills:   int(entry.Extended.Abilities["weaponKillsSuper"].Basic.Value),
+		abilityInfo := pgcr.AbilityInfo{
+			GrenadeKills: int(entry.Extended.Abilities.GrenadeKills),
+			MeleeKills:   int(entry.Extended.Abilities.MeleeKills),
+			SuperKills:   int(entry.Extended.Abilities.SuperKills),
 		}
 		characterInfo.AbilityInformation = abilityInfo
 	}

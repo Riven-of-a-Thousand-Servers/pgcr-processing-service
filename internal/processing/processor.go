@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"pgcr-processing-service/internal/cache"
+	"pgcr-processing-service/internal/compress"
 	"pgcr-processing-service/internal/db"
 	"pgcr-processing-service/internal/mapper"
 	"pgcr-processing-service/internal/rabbitmq"
 	"pgcr-processing-service/internal/types/manifest"
 	"pgcr-processing-service/internal/types/pgcr"
-	types "pgcr-processing-service/internal/types/rabbitmq"
 	"pgcr-processing-service/internal/utils"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -56,7 +56,7 @@ var statuses map[Status]string = map[Status]string{
 const staleThreshold = 5 * time.Minute
 
 type Processor interface {
-	DoPgcr(types.ProcessedPostGameCarnageReport) error
+	DoPgcr(pgcr.PgcrInfo) error
 }
 
 type PgcrProcessor struct {
@@ -64,10 +64,10 @@ type PgcrProcessor struct {
 	queries  *db.Queries
 	rabbitmq *rabbitmq.RabbitMQ
 	mapper   *mapper.PgcrMapper
-	cache    cache.Service[manifest.ManifestObject]
+	cache    cache.Service[manifest.ManifestEntry]
 }
 
-func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, mapper *mapper.PgcrMapper, redis cache.Service[manifest.ManifestObject]) *PgcrProcessor {
+func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, mapper *mapper.PgcrMapper, redis cache.Service[manifest.ManifestEntry]) *PgcrProcessor {
 	return &PgcrProcessor{
 		db:       db,
 		queries:  queries,
@@ -77,6 +77,7 @@ func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.Rabbit
 	}
 }
 
+// StartWork handles messages received from RabbitMQ to process PGCRs into the postgres db
 func (p *PgcrProcessor) StartWork(ctx context.Context, id int) error {
 	d, ch, err := p.rabbitmq.Consumer(ctx, fmt.Sprintf("pgcr_consumer_%d", id))
 	if err != nil {
@@ -107,23 +108,28 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 		delivery.Nack(false, false)
 	}
 
+	instanceId := pgcr.Response.ActivityDetails.InstanceId
+	instanceId64, _ := strconv.ParseInt(instanceId, 10, 64)
+	mode := pgcr.Response.ActivityDetails.Mode
+
 	// Only process raid activity
 	if pgcr.Response.ActivityDetails.Mode != 4 {
-		instanceId := pgcr.Response.ActivityDetails.InstanceId
-		mode := pgcr.Response.ActivityDetails.Mode
 		slog.Info("Pgcr is not a raid", "pgcr", instanceId, "mode", mode)
 		delivery.Ack(false)
 		return
 	}
 
-	instanceId := pgcr.Response.ActivityDetails.InstanceId
-	instanceId64, _ := strconv.ParseInt(instanceId, 10, 64)
-
 	slog.Info("Processing pgcr", "InstanceId", instanceId)
-	b, processedPgcr, err := p.mapper.ToProcessedPgcr(&pgcr.Response)
+	processed, err := p.mapper.ExtractInfo(&pgcr.Response)
 	if err != nil {
 		slog.Error("Error mapping pgcr to a processed pgcr", "instanceId", instanceId, "error", err)
 		delivery.Nack(false, false)
+		return
+	}
+
+	compressed, err := compress.Gzip(&pgcr)
+	if err != nil {
+		slog.Error("Unable to compress pgcr", "instanceId", instanceId, "error", err)
 		return
 	}
 
@@ -143,7 +149,7 @@ func (p *PgcrProcessor) handleDelivery(ctx context.Context, delivery amqp091.Del
 	defer tx.Rollback()
 
 	qtx := p.queries.WithTx(tx)
-	err = p.DoPgcr(ctx, qtx, processedPgcr, source, b)
+	err = p.Save(ctx, qtx, processed, source, compressed)
 	if err != nil {
 		if markErr := p.LedgerMarkError(ctx, instanceId64, err); markErr != nil {
 			slog.Error("Failed to mark ledger entry as failed", "instanceId", instanceId, "error", err)
@@ -187,7 +193,7 @@ func (p *PgcrProcessor) LedgerMarkError(ctx context.Context, instanceId int64, c
 }
 
 // Saves a processed pgcr to the Postgres DB
-func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types.ProcessedPostGameCarnageReport, source Source, b []byte) error {
+func (p *PgcrProcessor) Save(ctx context.Context, qtx *db.Queries, pgcr *pgcr.PgcrInfo, source Source, b []byte) error {
 	// If inserting to the ledger fails, skip inserting to the DB
 	entry, err := p.queries.UpsertLogEntry(ctx, db.UpsertLogEntryParams{
 		InstanceID: pgcr.InstanceId,
@@ -219,7 +225,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 		ActivityHash:    pgcr.ActivityHash,
 		IsFresh:         pgcr.FromBeginning,
 		Flawless:        pgcr.Flawless,
-		PlayerCount:     int32(len(pgcr.PlayerInformation)),
+		PlayerCount:     int32(len(pgcr.PlayerInfo)),
 		StartTime:       pgcr.StartTime,
 		EndTime:         pgcr.EndTime,
 		DurationSeconds: int32(pgcr.EndTime.Sub(pgcr.StartTime).Seconds()),
@@ -237,7 +243,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 	}
 
 	// Player
-	for _, pi := range pgcr.PlayerInformation {
+	for _, pi := range pgcr.PlayerInfo {
 		player := db.CreateDestinyPlayerParams{
 			MembershipID:   pi.MembershipId,
 			MembershipType: int32(pi.MembershipType),
@@ -292,7 +298,7 @@ func (p *PgcrProcessor) DoPgcr(ctx context.Context, qtx *db.Queries, pgcr *types
 		}
 
 		// InstanceCharacter
-		for _, ci := range pi.PlayerCharacterInformation {
+		for _, ci := range pi.CharacterInfo {
 			if err := p.queries.CreateInstanceCharacter(ctx, db.CreateInstanceCharacterParams{
 				InstanceID:   pgcr.InstanceId,
 				MembershipID: pi.MembershipId,

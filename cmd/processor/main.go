@@ -31,6 +31,7 @@ var (
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGQUIT)
 	defer cancel()
+
 	rabbitmq, err := rabbitmq.Connect(rabbitmq1.RabbitQueueName, rabbitmq1.RabbitMQUrl)
 	if err != nil {
 		slog.Error("Error happened while connecting to RabbitMQ", "error", err)
@@ -59,7 +60,7 @@ func main() {
 	})
 	defer redis.Close()
 
-	cacheService := cache.NewService(redis, 12*time.Hour, bungie.BungieManifestFetcher[manifest.ManifestObject](http.DefaultClient, ""))
+	cacheService := cache.NewService(redis, 12*time.Hour, bungie.BungieManifestFetcher[manifest.ManifestEntry](http.DefaultClient, ""))
 	mapper := mapper.NewMapper(cacheService)
 	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, mapper, cacheService)
 

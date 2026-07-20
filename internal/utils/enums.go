@@ -7,19 +7,19 @@ import (
 	"strings"
 	"sync"
 
-	"pgcr-processing-service/internal/types/rabbitmq"
+	"pgcr-processing-service/internal/types/pgcr"
 )
 
 var (
-	reverseClassLabels   map[string]rabbitmq.CharacterClass
-	characterClassLabels = map[rabbitmq.CharacterClass]string{
-		rabbitmq.TITAN:   "Titan",
-		rabbitmq.WARLOCK: "Warlock",
-		rabbitmq.HUNTER:  "Hunter",
+	reverseClassLabels   map[string]pgcr.CharacterClass
+	characterClassLabels = map[pgcr.CharacterClass]string{
+		pgcr.TITAN:   "Titan",
+		pgcr.WARLOCK: "Warlock",
+		pgcr.HUNTER:  "Hunter",
 	}
 )
 
-func ClassLabel(c rabbitmq.CharacterClass) string {
+func ClassLabel(c pgcr.CharacterClass) string {
 	if label, exists := characterClassLabels[c]; exists {
 		return label
 	} else {
@@ -28,26 +28,26 @@ func ClassLabel(c rabbitmq.CharacterClass) string {
 }
 
 var (
-	reverseRaidLabels map[string]rabbitmq.RaidName
-	raidNameLabels    = map[rabbitmq.RaidName]string{
-		rabbitmq.SALVATIONS_EDGE:     "Salvation's Edge",
-		rabbitmq.CROTAS_END:          "Crota's End",
-		rabbitmq.ROOT_OF_NIGHTMARES:  "Root of Nightmares",
-		rabbitmq.KINGS_FALL:          "King's Fall",
-		rabbitmq.VOW_OF_THE_DISCIPLE: "Vow of the Disciple",
-		rabbitmq.VAULT_OF_GLASS:      "Vault of Glass",
-		rabbitmq.DEEP_STONE_CRYPT:    "Deep Stone Crypt",
-		rabbitmq.GARDEN_OF_SALVATION: "Garden of Salvation",
-		rabbitmq.CROWN_OF_SORROW:     "Crown of Sorrow",
-		rabbitmq.LAST_WISH:           "Last Wish",
-		rabbitmq.SPIRE_OF_STARS:      "Leviathan, Spire of Stars",
-		rabbitmq.EATER_OF_WORLDS:     "Leviathan, Eater of Worlds",
-		rabbitmq.LEVIATHAN:           "Leviathan",
-		rabbitmq.SCOURGE_OF_THE_PAST: "Scourge of the Past",
+	reverseRaidLabels map[string]pgcr.RaidName
+	raidNameLabels    = map[pgcr.RaidName]string{
+		pgcr.SALVATIONS_EDGE:     "Salvation's Edge",
+		pgcr.CROTAS_END:          "Crota's End",
+		pgcr.ROOT_OF_NIGHTMARES:  "Root of Nightmares",
+		pgcr.KINGS_FALL:          "King's Fall",
+		pgcr.VOW_OF_THE_DISCIPLE: "Vow of the Disciple",
+		pgcr.VAULT_OF_GLASS:      "Vault of Glass",
+		pgcr.DEEP_STONE_CRYPT:    "Deep Stone Crypt",
+		pgcr.GARDEN_OF_SALVATION: "Garden of Salvation",
+		pgcr.CROWN_OF_SORROW:     "Crown of Sorrow",
+		pgcr.LAST_WISH:           "Last Wish",
+		pgcr.SPIRE_OF_STARS:      "Leviathan, Spire of Stars",
+		pgcr.EATER_OF_WORLDS:     "Leviathan, Eater of Worlds",
+		pgcr.LEVIATHAN:           "Leviathan",
+		pgcr.SCOURGE_OF_THE_PAST: "Scourge of the Past",
 	}
 )
 
-func RaidLabel(rn rabbitmq.RaidName) string {
+func RaidLabel(rn pgcr.RaidName) string {
 	if label, exists := raidNameLabels[rn]; exists {
 		return label
 	} else {
@@ -56,13 +56,13 @@ func RaidLabel(rn rabbitmq.RaidName) string {
 }
 
 var (
-	reverseDifficultyLabels map[string]rabbitmq.RaidDifficulty
-	raidDifficultyLabels    = map[rabbitmq.RaidDifficulty]string{
-		rabbitmq.NORMAL:         "Normal",
-		rabbitmq.PRESTIGE:       "Prestige",
-		rabbitmq.MASTER:         "Master",
-		rabbitmq.GUIDED_GAMES:   "Guided Games",
-		rabbitmq.CHALLENGE_MODE: "Challenge Mode",
+	reverseDifficultyLabels map[string]pgcr.RaidDifficulty
+	raidDifficultyLabels    = map[pgcr.RaidDifficulty]string{
+		pgcr.NORMAL:         "Normal",
+		pgcr.PRESTIGE:       "Prestige",
+		pgcr.MASTER:         "Master",
+		pgcr.GUIDED_GAMES:   "Guided Games",
+		pgcr.CHALLENGE_MODE: "Challenge Mode",
 	}
 )
 
@@ -71,17 +71,17 @@ var once sync.Once
 // Initializes the reverse look up maps only once
 func initReverseMaps() {
 	once.Do(func() {
-		reverseDifficultyLabels = make(map[string]rabbitmq.RaidDifficulty)
+		reverseDifficultyLabels = make(map[string]pgcr.RaidDifficulty)
 		for raidDifficulty, label := range raidDifficultyLabels {
 			reverseDifficultyLabels[label] = raidDifficulty
 		}
 
-		reverseRaidLabels = make(map[string]rabbitmq.RaidName)
+		reverseRaidLabels = make(map[string]pgcr.RaidName)
 		for raidName, label := range raidNameLabels {
 			reverseRaidLabels[label] = raidName
 		}
 
-		reverseClassLabels = make(map[string]rabbitmq.CharacterClass)
+		reverseClassLabels = make(map[string]pgcr.CharacterClass)
 		for characterClass, label := range characterClassLabels {
 			reverseClassLabels[label] = characterClass
 		}
@@ -92,7 +92,7 @@ func initReverseMaps() {
 // given a string, e.g., Last Wish should yield both the RaidName LAST_WISH
 // and the RaidDiffculty NORMAL. On the other hand, Salvation's Edge: Master
 // should yield RaidName SALVATIONS_EDGE and RaidDifficulty MASTER
-func GetRaidAndDifficulty(label string) (rabbitmq.RaidName, rabbitmq.RaidDifficulty, error) {
+func GetRaidAndDifficulty(label string) (pgcr.RaidName, pgcr.RaidDifficulty, error) {
 	initReverseMaps()
 	tokens := strings.Split(label, ":")
 
@@ -108,7 +108,7 @@ func GetRaidAndDifficulty(label string) (rabbitmq.RaidName, rabbitmq.RaidDifficu
 	}
 
 	if len(tokens) <= 1 {
-		return raidName, rabbitmq.NORMAL, nil
+		return raidName, pgcr.NORMAL, nil
 	}
 
 	difficulty := strings.TrimSpace(tokens[1]) // Default difficulty
@@ -128,20 +128,20 @@ func GetRaidAndDifficulty(label string) (rabbitmq.RaidName, rabbitmq.RaidDifficu
 	return raidName, raidDifficulty, nil
 }
 
-func GetDamageType(enumValue int) rabbitmq.DamageType {
+func GetDamageType(enumValue int) pgcr.DamageType {
 	switch enumValue {
 	case 1:
-		return rabbitmq.KINETIC
+		return pgcr.KINETIC
 	case 2:
-		return rabbitmq.ARC
+		return pgcr.ARC
 	case 3:
-		return rabbitmq.SOLAR
+		return pgcr.SOLAR
 	case 4:
-		return rabbitmq.VOID
+		return pgcr.VOID
 	case 6:
-		return rabbitmq.STASIS
+		return pgcr.STASIS
 	case 7:
-		return rabbitmq.STRAND
+		return pgcr.STRAND
 	default:
 		return ""
 	}
@@ -151,25 +151,25 @@ type EquippingBlocktypes interface {
 	~int64 | ~string | ~int
 }
 
-func GetEquippingSlot[T EquippingBlocktypes](enumValue T) rabbitmq.EquipmentSlot {
+func GetEquippingSlot[T EquippingBlocktypes](enumValue T) pgcr.EquipmentSlot {
 	value := any(enumValue)
 	if v, ok := value.(int64); ok {
 		switch v {
 		case 1498876634:
-			return rabbitmq.PRIMARY
+			return pgcr.PRIMARY
 		case 2465295065:
-			return rabbitmq.SPECIAL
+			return pgcr.SPECIAL
 		case 953998645:
-			return rabbitmq.HEAVY
+			return pgcr.HEAVY
 		}
 	} else if s, ok := value.(string); ok {
 		switch strings.ToLower(s) {
 		case "kinetic weapons":
-			return rabbitmq.PRIMARY
+			return pgcr.PRIMARY
 		case "energy weapons":
-			return rabbitmq.SPECIAL
+			return pgcr.SPECIAL
 		case "power weapons":
-			return rabbitmq.HEAVY
+			return pgcr.HEAVY
 		}
 	}
 	return ""
