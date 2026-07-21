@@ -26,6 +26,19 @@ func TestExtractInfo_ShouldWorkForAPIPgcrs(t *testing.T) {
 	}
 }
 
+func TestExtractInfo_ShouldWorkForDatasetPgcrs(t *testing.T) {
+	mockCache := new(mockCacheService[manifest.ManifestEntry])
+	mockCache.On("Get", mock.Anything, mock.Anything, mock.Anything).
+		Return(manifest.ManifestEntry{DisplayProperties: manifest.DisplayProperties{Name: "Last Wish"}}, nil)
+
+	pgcr := openPgcr(t, "beyond_light_pgcr.json")
+	sut := NewMapper(mockCache)
+
+	if _, err := sut.ExtractInfo(&pgcr.Response); err != nil {
+		t.Fatal("Unable to extract info from dataset-originated pgcr")
+	}
+}
+
 func openPgcr(t *testing.T, filename string) *pgcr.PostGameCarnageReportResponse {
 	t.Helper()
 	bytes, err := os.ReadFile(filepath.Join("./testdata/", filename))
