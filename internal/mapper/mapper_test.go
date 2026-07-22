@@ -34,8 +34,13 @@ func TestExtractInfo_ShouldWorkForDatasetPgcrs(t *testing.T) {
 	pgcr := openPgcr(t, "beyond_light_pgcr.json")
 	sut := NewMapper(mockCache)
 
-	if _, err := sut.ExtractInfo(&pgcr.Response); err != nil {
+	res, err := sut.ExtractInfo(&pgcr.Response)
+	if err != nil {
 		t.Fatal("Unable to extract info from dataset-originated pgcr")
+	}
+
+	if res == nil {
+		t.Fatalf("Response is nil")
 	}
 }
 
