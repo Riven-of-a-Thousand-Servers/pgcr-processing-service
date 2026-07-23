@@ -13,26 +13,31 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestExtractInfo_ShouldWorkForAPIPgcrs(t *testing.T) {
+func TestExtractInfo_ShouldWorkForAPIPgcr(t *testing.T) {
 	mockCache := new(mockCacheService[manifest.ManifestEntry])
 	mockCache.On("Get", mock.Anything, mock.Anything, mock.Anything).
 		Return(manifest.ManifestEntry{DisplayProperties: manifest.DisplayProperties{Name: "Last Wish"}}, nil)
 
 	pgcr := openPgcr(t, "beyond_light_pgcr.json")
-	sut := NewMapper(mockCache)
+	sut := New(mockCache)
 
-	if _, err := sut.ExtractInfo(&pgcr.Response); err != nil {
+	res, err := sut.ExtractInfo(&pgcr.Response)
+	if err != nil {
 		t.Fatal("Unable to extract info from API-originated pgcr")
+	}
+
+	if res == nil {
+		t.Fatal("Response is nil")
 	}
 }
 
-func TestExtractInfo_ShouldWorkForDatasetPgcrs(t *testing.T) {
+func TestExtractInfo_ShouldWorkForDatasetPgcr(t *testing.T) {
 	mockCache := new(mockCacheService[manifest.ManifestEntry])
 	mockCache.On("Get", mock.Anything, mock.Anything, mock.Anything).
 		Return(manifest.ManifestEntry{DisplayProperties: manifest.DisplayProperties{Name: "Last Wish"}}, nil)
 
 	pgcr := openPgcr(t, "beyond_light_pgcr.json")
-	sut := NewMapper(mockCache)
+	sut := New(mockCache)
 
 	res, err := sut.ExtractInfo(&pgcr.Response)
 	if err != nil {

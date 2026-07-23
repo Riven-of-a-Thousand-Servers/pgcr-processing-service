@@ -50,6 +50,19 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+  proxy:
+    build:
+      contex: .
+      tags:
+        - "proxy-service:latest"
+      args:
+        SERVICE: proxy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   processor:
     build:
       context: .

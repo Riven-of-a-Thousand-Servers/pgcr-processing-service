@@ -17,7 +17,7 @@ type PgcrMapper struct {
 	cache cache.Service[manifest.ManifestEntry]
 }
 
-func NewMapper(cache cache.Service[manifest.ManifestEntry]) *PgcrMapper {
+func New(cache cache.Service[manifest.ManifestEntry]) *PgcrMapper {
 	return &PgcrMapper{
 		cache: cache,
 	}

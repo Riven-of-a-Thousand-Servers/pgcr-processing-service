@@ -67,7 +67,7 @@ type PgcrProcessor struct {
 	cache    cache.Service[manifest.ManifestEntry]
 }
 
-func NewPgcrProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, mapper *mapper.PgcrMapper, redis cache.Service[manifest.ManifestEntry]) *PgcrProcessor {
+func NewProcessor(db *sql.DB, queries *db.Queries, rabbitmq *rabbitmq.RabbitMQ, mapper *mapper.PgcrMapper, redis cache.Service[manifest.ManifestEntry]) *PgcrProcessor {
 	return &PgcrProcessor{
 		db:       db,
 		queries:  queries,

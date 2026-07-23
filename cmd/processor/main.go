@@ -61,8 +61,8 @@ func main() {
 	defer redis.Close()
 
 	cacheService := cache.NewService(redis, 12*time.Hour, bungie.BungieManifestFetcher[manifest.ManifestEntry](http.DefaultClient, ""))
-	mapper := mapper.NewMapper(cacheService)
-	processor := processing.NewPgcrProcessor(conn, queries, rabbitmq, mapper, cacheService)
+	mapper := mapper.New(cacheService)
+	processor := processing.NewProcessor(conn, queries, rabbitmq, mapper, cacheService)
 
 	var wg sync.WaitGroup
 	for i := range goroutines {
