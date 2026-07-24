@@ -24,7 +24,7 @@ import (
 
 var (
 	ipv6interface = flag.String("interface", "eth0", "Ipv6 interface to use")
-	ipv6n         = flag.Int("v6_n", 1, "Number of sequential Ipv6 addresses")
+	ipv6n         = flag.Int("n", 16, "Number of sequential Ipv6 addresses")
 	port          = flag.Int("port", 8081, "Port to listen on")
 	printAddrs    = flag.Bool("print_addrs", false, "Print Ipv6 addresses")
 	verbose       = flag.Bool("verbose", false, "Print logs")
@@ -61,8 +61,8 @@ func ReadSecret(path string) (string, error) {
 func main() {
 	flag.Parse()
 
-	addressPath := os.Getenv("IPV6")
-	if addressPath == "" {
+	addressPath, err := utils.ReadSecret("INITIAL_ADDR")
+	if err != nil {
 		log.Fatal("IPV6 env variable must be passed")
 	}
 
